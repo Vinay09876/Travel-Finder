@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
+import { TravelProvider } from "@/components/travel/TravelContext";
+import { TravelShell } from "@/components/travel/TravelShell";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -28,7 +31,15 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">{children}</body>
+      <body className="min-h-full flex flex-col bg-slate-50 text-slate-900">
+        <TravelProvider>
+          <Suspense fallback={<div>Loading shell...</div>}>
+            <TravelShell>
+              {children}
+            </TravelShell>
+          </Suspense>
+        </TravelProvider>
+      </body>
     </html>
   );
 }
