@@ -1,13 +1,171 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
-  provider = "prisma-client"
-  output   = "../app/generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+}
+
+model User {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  savedTrips    SavedTrip[]
+  aiItineraries AiItinerary[]
+}
+
+model Destination {
+  id               String   @id
+  name             String
+  state            String
+  region           String   // 'North' | 'South' | 'West' | 'East' | 'Central'
+  tagline          String
+  shortDescription String
+  fullDescription  String
+  category         String   // 'beach' | 'heritage' | 'hills' | 'adventure' | 'weekend'
+  heroImage        String
+  galleryImages    String[] // array of strings
+  vibe             String[]
+  bestSeason       String
+  bestMonths       String[]
+  weatherNotes     String
+  
+  // Storing distance matrix as JSON { "Mumbai": 580, "Delhi": 1850, ... }
+  distanceKm       Json
+
+  // Important Info
+  infoSafety         String
+  infoConnectivity   String
+  infoNearestStation String
+  infoNearestAirport String
+  infoCashNote       String
+
+  // Lists
+  travelTips  String[]
+  mustTryFood String[]
+
+  // Relations
+  costMultiplier CostMultiplier?
+  transportRoutes TransportRoute[]
+  accommodations  Accommodation[]
+  activities      Activity[]
+  itineraryDays   CuratedItineraryDay[]
+  savedTrips      SavedTrip[]
+  aiItineraries   AiItinerary[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CostMultiplier {
+  id            String      @id @default(cuid())
+  destinationId String      @unique
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  
+  // Food costs
+  foodBudget    Int
+  foodStandard  Int
+  foodComfort   Int
+  
+  // Local transport costs
+  localScooterOrAuto Int
+  localCabs          Int
+}
+
+model TransportRoute {
+  id            String      @id @default(cuid())
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  
+  originCity    String      // e.g. "Mumbai", "Delhi"
+  mode          String      // 'train' | 'bus' | 'flight' | 'cab'
+  name          String
+  durationHours Float
+  costPerPersonRoundTrip Int
+  description   String
+  recommended   Boolean     @default(false)
+
+  @@index([originCity, destinationId])
+}
+
+model Accommodation {
+  id            String      @id @default(cuid())
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  
+  tier                String  // 'budget_hostel' | 'standard_homestay' | 'comfort_hotel'
+  name                String
+  costPerNightPerRoom Int
+  description         String
+}
+
+model Activity {
+  id            String      @id @default(cuid())
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  
+  name          String
+  costPerPerson Int
+  tag           String
+}
+
+model CuratedItineraryDay {
+  id            String      @id @default(cuid())
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  
+  dayNumber Int
+  title     String
+  theme     String
+
+  // Morning
+  morningActivity    String
+  morningDescription String
+  morningCost        Int
+  morningTip         String?
+
+  // Afternoon
+  afternoonActivity    String
+  afternoonDescription String
+  afternoonCost        Int
+  afternoonFoodRec     String?
+
+  // Evening
+  eveningActivity    String
+  eveningDescription String
+  eveningCost        Int
+  eveningSunsetSpot  String?
+
+  @@unique([destinationId, dayNumber])
+}
+
+model SavedTrip {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  
+  searchParams  Json        // Stores the SearchQuery snapshot
+  savedAt       DateTime    @default(now())
+
+  @@unique([userId, destinationId])
+}
+
+model AiItinerary {
+  id            String      @id @default(cuid())
+  userId        String
+  user          User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  destinationId String
+  destination   Destination @relation(fields: [destinationId], references: [id], onDelete: Cascade)
+  
+  preferences      Json     // vibe, startTime, dietary, etc.
+  generatedContent Json     // The structured LLM response matching ItineraryDay array format
+  createdAt        DateTime @default(now())
 }
