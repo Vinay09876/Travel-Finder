@@ -8,6 +8,7 @@ export interface NavbarProps {
   onOpenHowItWorks: () => void;
   onOpenSavedTrips?: () => void;
   savedCount?: number;
+  isLoadingSavedTrips?: boolean;
   activeQuery: SearchQuery;
 }
 
@@ -17,6 +18,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   onOpenHowItWorks,
   onOpenSavedTrips,
   savedCount = 0,
+  isLoadingSavedTrips = false,
   activeQuery,
 }) => {
   return (
@@ -65,11 +67,15 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <Bookmark className="w-4 h-4 text-slate-400" />
                 <span>Saved</span>
-                {savedCount > 0 && (
+                {isLoadingSavedTrips ? (
+                  <span className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 flex items-center justify-center">
+                    <div className="w-2.5 h-2.5 border-2 border-slate-300 border-t-slate-500 rounded-full animate-spin"></div>
+                  </span>
+                ) : savedCount > 0 ? (
                   <span className="w-5 h-5 rounded-full bg-teal-100 text-teal-800 text-[11px] font-bold flex items-center justify-center">
                     {savedCount}
                   </span>
-                )}
+                ) : null}
               </button>
             )}
 

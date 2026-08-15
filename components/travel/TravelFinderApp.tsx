@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { SearchQuery, Destination, CalculatedCost } from '@/types';
 import { AlertCircle } from 'lucide-react';
 import { DESTINATIONS, DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
@@ -37,7 +37,36 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
   const [searchError, setSearchError] = useState<string | null>(null);
 
   // Saved / Bookmarked Trips
-  const [savedTripIds, setSavedTripIds] = useState<string[]>(['goa', 'rishikesh']);
+  const [savedTripIds, setSavedTripIds] = useState<string[]>([]);
+  const [isLoadingSavedTrips, setIsLoadingSavedTrips] = useState(true);
+
+  // Load Saved Trips on mount
+  useEffect(() => {
+    let anonId = localStorage.getItem('travelFinder_anon_userId');
+    if (!anonId) {
+      anonId = crypto.randomUUID();
+      localStorage.setItem('travelFinder_anon_userId', anonId);
+    }
+
+    const fetchSavedTrips = async () => {
+      try {
+        const res = await fetch('/api/saved-trips', {
+          headers: { 'x-user-id': anonId as string }
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const ids = data.savedTrips.map((st: any) => st.destinationId);
+          setSavedTripIds(ids);
+        }
+      } catch (err) {
+        console.error('Failed to load saved trips:', err);
+      } finally {
+        setIsLoadingSavedTrips(false);
+      }
+    };
+    
+    fetchSavedTrips();
+  }, []);
 
   // Detail View State
   const [destinationCache, setDestinationCache] = useState<Record<string, Destination>>({});
@@ -135,10 +164,40 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
     }
   };
 
-  const handleToggleSave = (destId: string) => {
-    setSavedTripIds((prev) =>
-      prev.includes(destId) ? prev.filter((id) => id !== destId) : [...prev, destId]
-    );
+  const handleToggleSave = async (destId: string) => {
+    const anonId = localStorage.getItem('travelFinder_anon_userId');
+    if (!anonId) return;
+
+    const isSaving = !savedTripIds.includes(destId);
+
+    try {
+      if (isSaving) {
+        const res = await fetch('/api/saved-trips', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-user-id': anonId
+          },
+          body: JSON.stringify({
+            destinationId: destId,
+            searchParams: query
+          })
+        });
+        if (res.ok) {
+          setSavedTripIds((prev) => [...prev, destId]);
+        }
+      } else {
+        const res = await fetch(`/api/saved-trips/${destId}`, {
+          method: 'DELETE',
+          headers: { 'x-user-id': anonId }
+        });
+        if (res.ok) {
+          setSavedTripIds((prev) => prev.filter((id) => id !== destId));
+        }
+      }
+    } catch (err) {
+      console.error('Failed to toggle save:', err);
+    }
   };
 
   const activeDestination =
@@ -156,6 +215,7 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
         onOpenHowItWorks={() => setIsHowItWorksOpen(true)}
         onOpenSavedTrips={() => setIsSavedTripsOpen(true)}
         savedCount={savedTripIds.length}
+        isLoadingSavedTrips={isLoadingSavedTrips}
         activeQuery={query}
       />
 
@@ -210,6 +270,8 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
                   query={query}
                   onSelectDestination={handleSelectDestination}
                   onViewAllResults={handleFindTrips}
+                  savedTripIds={savedTripIds}
+                  onToggleSave={handleToggleSave}
                 />
               </div>
             </section>
@@ -226,6 +288,8 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
             onBackToHome={handleNavigateHome}
             onSearch={handleFindTrips}
             isSearching={isSearching}
+            savedTripIds={savedTripIds}
+            onToggleSave={handleToggleSave}
           />
         )}
 
@@ -257,6 +321,8 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
               onChangeQuery={setQuery}
               onBackToResults={() => setCurrentView('results')}
               onOpenAiItinerary={() => setIsAiItineraryOpen(true)}
+              isSaved={savedTripIds.includes(activeDestination.id)}
+              onToggleSave={handleToggleSave}
             />
           ) : null
         )}

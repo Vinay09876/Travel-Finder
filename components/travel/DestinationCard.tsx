@@ -1,5 +1,5 @@
 import React from 'react';
-import { MapPin, ArrowRight, CheckCircle2, AlertCircle, ArrowUpRight } from 'lucide-react';
+import { MapPin, ArrowRight, CheckCircle2, AlertCircle, ArrowUpRight, Bookmark } from 'lucide-react';
 import { Destination, SearchQuery, CalculatedCost } from '@/types';
 import { formatINR, getFallbackImage } from '@/lib/utils';
 import { CostBreakdownPillars } from './CostBreakdownPillars';
@@ -10,6 +10,8 @@ export interface DestinationCardProps {
   query: SearchQuery;
   onSelect: (destId: string) => void;
   layout?: 'row' | 'grid';
+  isSaved?: boolean;
+  onToggleSave?: (destId: string) => void;
 }
 
 export const DestinationCard: React.FC<DestinationCardProps> = ({
@@ -18,6 +20,8 @@ export const DestinationCard: React.FC<DestinationCardProps> = ({
   query,
   onSelect,
   layout = 'row',
+  isSaved = false,
+  onToggleSave,
 }) => {
   const status = costInfo.budgetStatus;
 
@@ -46,21 +50,38 @@ export const DestinationCard: React.FC<DestinationCardProps> = ({
             <span>{destination.state}</span>
           </div>
 
-          {/* Budget Fit Badge */}
-          <div
-            className={`absolute top-3 right-3 px-2.5 py-1 rounded-md text-[11px] font-bold backdrop-blur-md shadow-xs ${
-              status === 'fits'
-                ? 'bg-emerald-600/95 text-white'
+          {/* Top Right Badges */}
+          <div className="absolute top-3 right-3 flex items-center gap-2">
+            {/* Budget Fit Badge */}
+            <div
+              className={`px-2.5 py-1 rounded-md text-[11px] font-bold backdrop-blur-md shadow-xs ${
+                status === 'fits'
+                  ? 'bg-emerald-600/95 text-white'
+                  : status === 'near'
+                  ? 'bg-amber-600/95 text-white'
+                  : 'bg-slate-900/90 text-slate-200'
+              }`}
+            >
+              {status === 'fits'
+                ? 'Fits your budget ✓'
                 : status === 'near'
-                ? 'bg-amber-600/95 text-white'
-                : 'bg-slate-900/90 text-slate-200'
-            }`}
-          >
-            {status === 'fits'
-              ? 'Fits your budget ✓'
-              : status === 'near'
-              ? 'Near your budget'
-              : 'Over budget'}
+                ? 'Near your budget'
+                : 'Over budget'}
+            </div>
+
+            {/* Bookmark Button */}
+            {onToggleSave && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onToggleSave(destination.id);
+                }}
+                className="w-7 h-7 bg-white/90 hover:bg-white backdrop-blur-md rounded-full shadow-xs flex items-center justify-center transition-all cursor-pointer"
+                aria-label={isSaved ? "Remove bookmark" : "Save destination"}
+              >
+                <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-teal-500 text-teal-500' : 'text-slate-600 hover:text-teal-600'}`} />
+              </button>
+            )}
           </div>
 
           {/* Destination name over bottom gradient */}
@@ -127,6 +148,20 @@ export const DestinationCard: React.FC<DestinationCardProps> = ({
           onError={(e) => { e.currentTarget.src = getFallbackImage(destination.id); }}
         />
         <div className="absolute inset-0 bg-gradient-to-t md:bg-gradient-to-r from-slate-950/75 via-transparent to-transparent" />
+
+        {/* Bookmark Button */}
+        {onToggleSave && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSave(destination.id);
+            }}
+            className="absolute top-3 right-3 w-8 h-8 bg-white/90 hover:bg-white backdrop-blur-md rounded-full shadow-xs flex items-center justify-center transition-all cursor-pointer z-10"
+            aria-label={isSaved ? "Remove bookmark" : "Save destination"}
+          >
+            <Bookmark className={`w-4 h-4 ${isSaved ? 'fill-teal-500 text-teal-500' : 'text-slate-600 hover:text-teal-600'}`} />
+          </button>
+        )}
 
         {/* Destination Info Overlay */}
         <div className="absolute bottom-3 left-3 right-3 text-white">
