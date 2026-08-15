@@ -12,9 +12,8 @@ import {
   Compass,
 } from 'lucide-react';
 import { Destination, SearchQuery, TravelCategory, CalculatedCost } from '@/types';
-import { calculateTripCost } from '@/lib/cost-calculator';
-import { formatINR } from '@/lib/utils';
 import { SearchForm } from './SearchForm';
+import { formatINR } from '@/lib/utils';
 import { DestinationCard } from './DestinationCard';
 
 export interface SearchResultsViewProps {

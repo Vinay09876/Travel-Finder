@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { Destination as PrismaDestination, TransportRoute, Accommodation, CostMultiplier, Activity, CuratedItineraryDay } from '@prisma/client';
 import { Destination, CityOrigin, TravelCategory, TransportOption, StayTier } from '../types';
 
