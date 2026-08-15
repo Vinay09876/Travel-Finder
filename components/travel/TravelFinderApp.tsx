@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState } from 'react';
-import { SearchQuery } from '@/types';
+import { SearchQuery, Destination, CalculatedCost } from '@/types';
 import { DESTINATIONS, DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
@@ -30,6 +30,11 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
   // Search Query State
   const [query, setQuery] = useState<SearchQuery>(DEFAULT_SEARCH_QUERY);
 
+  // API State
+  const [apiResults, setApiResults] = useState<{ destination: Destination; costInfo: CalculatedCost }[] | null>(null);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+
   // Saved / Bookmarked Trips
   const [savedTripIds, setSavedTripIds] = useState<string[]>(['goa', 'rishikesh']);
 
@@ -47,10 +52,47 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
     }
   };
 
-  const handleFindTrips = () => {
-    setCurrentView('results');
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+  const handleFindTrips = async () => {
+    setIsSearching(true);
+    setSearchError(null);
+    try {
+      const params = new URLSearchParams({
+        origin: query.fromCity,
+        budget: query.budget.toString(),
+        travelers: query.travelers.toString(),
+        duration: query.durationDays.toString(),
+        month: query.month,
+      });
+      if (query.category && query.category !== 'all') {
+        params.append('category', query.category);
+      }
+      if (query.stayTier) {
+        params.append('stayTier', query.stayTier);
+      }
+      if (query.transportPreference && query.transportPreference !== 'all') {
+        params.append('transportPreference', query.transportPreference);
+      }
+
+      const res = await fetch(`/api/destinations/search?${params.toString()}`);
+      if (!res.ok) {
+        throw new Error('Failed to fetch destinations');
+      }
+      
+      const data = await res.json();
+      if (!data.results) {
+        throw new Error('Invalid response from server');
+      }
+      
+      setApiResults(data.results);
+      setCurrentView('results');
+      if (typeof window !== 'undefined') {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    } catch (err) {
+      console.error(err);
+      setSearchError('An error occurred while searching for trips. Please try again.');
+    } finally {
+      setIsSearching(false);
     }
   };
 
@@ -68,7 +110,9 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
   };
 
   const activeDestination =
-    initialDestinations.find((d) => d.id === selectedDestId) || initialDestinations[0];
+    apiResults?.find((r) => r.destination.id === selectedDestId)?.destination ||
+    initialDestinations.find((d) => d.id === selectedDestId) ||
+    initialDestinations[0];
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 font-sans selection:bg-teal-500 selection:text-white">
@@ -112,7 +156,13 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
                   query={query}
                   onChangeQuery={setQuery}
                   onSubmitSearch={handleFindTrips}
+                  isSearching={isSearching}
                 />
+                {searchError && (
+                  <div className="mt-4 p-4 text-sm text-red-700 bg-red-50 border border-red-200 rounded-xl flex items-center justify-center font-medium">
+                    {searchError}
+                  </div>
+                )}
               </div>
 
               {/* Trust Section */}
@@ -134,13 +184,15 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
         )}
 
         {/* VIEW 2: SEARCH RESULTS VIEW */}
-        {currentView === 'results' && (
+        {currentView === 'results' && apiResults && (
           <SearchResultsView
-            destinations={initialDestinations}
+            apiResults={apiResults}
             query={query}
             onChangeQuery={setQuery}
             onSelectDestination={handleSelectDestination}
             onBackToHome={handleNavigateHome}
+            onSearch={handleFindTrips}
+            isSearching={isSearching}
           />
         )}
 

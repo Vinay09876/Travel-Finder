@@ -11,28 +11,32 @@ import {
   AlertCircle,
   Compass,
 } from 'lucide-react';
-import { Destination, SearchQuery, TravelCategory } from '@/types';
+import { Destination, SearchQuery, TravelCategory, CalculatedCost } from '@/types';
 import { calculateTripCost } from '@/lib/cost-calculator';
 import { formatINR } from '@/lib/utils';
 import { SearchForm } from './SearchForm';
 import { DestinationCard } from './DestinationCard';
 
 export interface SearchResultsViewProps {
-  destinations: Destination[];
+  apiResults: { destination: Destination; costInfo: CalculatedCost }[];
   query: SearchQuery;
   onChangeQuery: (newQuery: SearchQuery) => void;
   onSelectDestination: (destId: string) => void;
   onBackToHome: () => void;
+  onSearch: () => void;
+  isSearching: boolean;
 }
 
 type SortOption = 'best_match' | 'cheapest' | 'budget_status';
 
 export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
-  destinations,
+  apiResults,
   query,
   onChangeQuery,
   onSelectDestination,
   onBackToHome,
+  onSearch,
+  isSearching,
 }) => {
   const [sortBy, setSortBy] = useState<SortOption>('best_match');
   const [selectedCategory, setSelectedCategory] = useState<TravelCategory>('all');
@@ -49,14 +53,9 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
   // Calculate costs and sort/filter
   const processedDestinations = useMemo(() => {
-    return destinations
-      .map((dest) => {
-        const costInfo = calculateTripCost(dest, query);
-        return {
-          dest,
-          costInfo,
-        };
-      })
+    const baseList = apiResults.map((res) => ({ dest: res.destination, costInfo: res.costInfo }));
+
+    return baseList
       .filter(({ dest, costInfo }) => {
         if (selectedCategory !== 'all' && dest.category !== selectedCategory) {
           return false;
@@ -84,12 +83,12 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
         }
         return a.costInfo.totalEstimatedCost - b.costInfo.totalEstimatedCost;
       });
-  }, [destinations, query, selectedCategory, statusFilter, sortBy]);
+  }, [apiResults, query, selectedCategory, statusFilter, sortBy]);
 
   // Overall counts across all categories
   const allWithCosts = useMemo(() => {
-    return destinations.map((dest) => calculateTripCost(dest, query));
-  }, [destinations, query]);
+    return apiResults.map((r) => r.costInfo);
+  }, [apiResults]);
 
   const fitsCount = allWithCosts.filter((c) => c.budgetStatus === 'fits').length;
   const nearCount = allWithCosts.filter((c) => c.budgetStatus === 'near').length;
@@ -124,8 +123,12 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
           <SearchForm
             query={query}
             onChangeQuery={onChangeQuery}
-            onSubmitSearch={() => setIsEditingSearch(false)}
+            onSubmitSearch={() => {
+              setIsEditingSearch(false);
+              onSearch();
+            }}
             compact={true}
+            isSearching={isSearching}
           />
         </div>
       )}
@@ -192,7 +195,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
                   : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
               }`}
             >
-              All ({destinations.length})
+              All ({apiResults.length})
             </button>
 
             <button

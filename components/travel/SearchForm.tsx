@@ -10,6 +10,7 @@ export interface SearchFormProps {
   onChangeQuery: (newQuery: SearchQuery) => void;
   onSubmitSearch: () => void;
   compact?: boolean;
+  isSearching?: boolean;
 }
 
 export const SearchForm: React.FC<SearchFormProps> = ({
@@ -17,6 +18,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
   onChangeQuery,
   onSubmitSearch,
   compact = false,
+  isSearching = false,
 }) => {
   const budgetPresets = [5000, 8000, 10000, 15000, 25000, 40000];
 
@@ -271,10 +273,11 @@ export const SearchForm: React.FC<SearchFormProps> = ({
           <button
             id="find-trips-submit-btn"
             type="submit"
-            className="h-12 px-7 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-bold text-sm tracking-wide shadow-md shadow-teal-700/15 flex items-center justify-center gap-2 transition-all cursor-pointer group shrink-0"
+            disabled={isSearching}
+            className="h-12 px-7 rounded-xl bg-teal-600 hover:bg-teal-700 active:scale-[0.99] text-white font-bold text-sm tracking-wide shadow-md shadow-teal-700/15 flex items-center justify-center gap-2 transition-all cursor-pointer group shrink-0 disabled:opacity-70 disabled:cursor-not-allowed"
           >
-            <span>Find Trips</span>
-            <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+            <span>{isSearching ? 'Searching...' : 'Find Trips'}</span>
+            {!isSearching && <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />}
           </button>
         </div>
       </form>
