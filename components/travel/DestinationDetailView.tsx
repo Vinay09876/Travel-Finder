@@ -20,6 +20,7 @@ import {
   ChevronUp,
   Info,
   Plane,
+  Bookmark,
 } from 'lucide-react';
 import { Destination, SearchQuery, StayTier, TransportPreference } from '@/types';
 import { calculateTripCost } from '@/lib/cost-calculator';
@@ -31,6 +32,8 @@ export interface DestinationDetailViewProps {
   onChangeQuery: (newQuery: SearchQuery) => void;
   onBackToResults: () => void;
   onOpenAiItinerary: () => void;
+  isSaved?: boolean;
+  onToggleSave?: (destId: string) => void;
 }
 
 export const DestinationDetailView: React.FC<DestinationDetailViewProps> = ({
@@ -38,6 +41,8 @@ export const DestinationDetailView: React.FC<DestinationDetailViewProps> = ({
   query,
   onBackToResults,
   onOpenAiItinerary,
+  isSaved = false,
+  onToggleSave,
 }) => {
   // Local stay tier and transport mode overrides for interactive customization
   const [activeStayTier, setActiveStayTier] = useState<StayTier>(query.stayTier || 'standard_homestay');
@@ -78,6 +83,21 @@ export const DestinationDetailView: React.FC<DestinationDetailViewProps> = ({
         </button>
 
         <div className="flex items-center gap-2">
+          {/* Bookmark Button */}
+          {onToggleSave && (
+            <button
+              onClick={() => onToggleSave(destination.id)}
+              className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-2 rounded-lg border transition-colors cursor-pointer ${
+                isSaved
+                  ? 'bg-teal-50 border-teal-200 text-teal-700 hover:bg-teal-100'
+                  : 'bg-white hover:bg-slate-50 border-slate-200 text-slate-700'
+              }`}
+            >
+              <Bookmark className={`w-3.5 h-3.5 ${isSaved ? 'fill-teal-600' : ''}`} />
+              <span>{isSaved ? 'Saved' : 'Save'}</span>
+            </button>
+          )}
+
           {/* Share Button */}
           <button
             id="share-trip-btn"

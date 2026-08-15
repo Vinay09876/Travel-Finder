@@ -25,6 +25,8 @@ export interface SearchResultsViewProps {
   onBackToHome: () => void;
   onSearch: () => void;
   isSearching: boolean;
+  savedTripIds?: string[];
+  onToggleSave?: (destId: string) => void;
 }
 
 type SortOption = 'best_match' | 'cheapest' | 'budget_status';
@@ -37,6 +39,8 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   onBackToHome,
   onSearch,
   isSearching,
+  savedTripIds = [],
+  onToggleSave,
 }) => {
   const [sortBy, setSortBy] = useState<SortOption>('best_match');
   const [selectedCategory, setSelectedCategory] = useState<TravelCategory>('all');
@@ -313,6 +317,8 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
               query={query}
               onSelect={onSelectDestination}
               layout="row"
+              isSaved={savedTripIds.includes(dest.id)}
+              onToggleSave={onToggleSave}
             />
           ))}
         </div>

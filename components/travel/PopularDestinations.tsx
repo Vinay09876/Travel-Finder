@@ -9,6 +9,8 @@ export interface PopularDestinationsProps {
   query: SearchQuery;
   onSelectDestination: (destId: string) => void;
   onViewAllResults: () => void;
+  savedTripIds?: string[];
+  onToggleSave?: (destId: string) => void;
 }
 
 export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
@@ -16,6 +18,8 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
   query,
   onSelectDestination,
   onViewAllResults,
+  savedTripIds = [],
+  onToggleSave,
 }) => {
   // Focus on the core popular weekend getaways
   const featuredIds = ['goa', 'udaipur', 'jaipur', 'manali', 'gokarna', 'rishikesh'];
@@ -59,6 +63,8 @@ export const PopularDestinations: React.FC<PopularDestinationsProps> = ({
               query={query}
               onSelect={onSelectDestination}
               layout="grid"
+              isSaved={savedTripIds.includes(dest.id)}
+              onToggleSave={onToggleSave}
             />
           );
         })}
