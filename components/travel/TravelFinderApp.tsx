@@ -38,6 +38,7 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
 
   // Saved / Bookmarked Trips
   const [savedTripIds, setSavedTripIds] = useState<string[]>([]);
+  const [savedDestinations, setSavedDestinations] = useState<Destination[]>([]);
   const [isLoadingSavedTrips, setIsLoadingSavedTrips] = useState(true);
 
   // Load Saved Trips on mount
@@ -56,7 +57,9 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
         if (res.ok) {
           const data = await res.json();
           const ids = data.savedTrips.map((st: any) => st.destinationId);
+          const dests = data.savedTrips.map((st: any) => st.destination);
           setSavedTripIds(ids);
+          setSavedDestinations(dests);
         }
       } catch (err) {
         console.error('Failed to load saved trips:', err);
@@ -185,6 +188,15 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
         });
         if (res.ok) {
           setSavedTripIds((prev) => [...prev, destId]);
+          
+          const destObj = 
+            destinationCache[destId] || 
+            apiResults?.find(r => r.destination.id === destId)?.destination || 
+            initialDestinations.find(d => d.id === destId);
+            
+          if (destObj) {
+            setSavedDestinations((prev) => [...prev, destObj]);
+          }
         }
       } else {
         const res = await fetch(`/api/saved-trips/${destId}`, {
@@ -193,6 +205,7 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
         });
         if (res.ok) {
           setSavedTripIds((prev) => prev.filter((id) => id !== destId));
+          setSavedDestinations((prev) => prev.filter((d) => d.id !== destId));
         }
       }
     } catch (err) {
@@ -359,7 +372,7 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
       <SavedTripsModal
         isOpen={isSavedTripsOpen}
         savedTripIds={savedTripIds}
-        destinations={initialDestinations}
+        destinations={savedDestinations}
         query={query}
         onSelectDestination={handleSelectDestination}
         onToggleSave={handleToggleSave}
