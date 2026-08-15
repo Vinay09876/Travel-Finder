@@ -1,19 +1,37 @@
 import { NextResponse } from 'next/server';
 import { calculateTripCost } from '@/lib/cost-calculator';
-import { Destination, SearchQuery } from '@/types';
+import { SearchQuery } from '@/types';
+import prisma from '@/lib/prisma';
+import { mapPrismaToDestination } from '@/lib/db-mapper';
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { destination, query } = body as { destination: Destination, query: SearchQuery };
+    const { destinationId, query } = body as { destinationId: string, query: SearchQuery };
 
-    if (!destination || !query) {
-      return NextResponse.json({ error: 'Missing destination or query' }, { status: 400 });
+    if (!destinationId || !query) {
+      return NextResponse.json({ error: 'Missing destinationId or query' }, { status: 400 });
     }
 
-    // Since the frontend already has the mapped Destination object,
-    // we can just run the cost calculator directly on it.
-    // Long term, this could fetch from DB by ID, but taking it from body is faster for stateless calc.
+    // Fetch the destination and all required pricing data from PostgreSQL securely
+    const dbDest = await prisma.destination.findUnique({
+      where: { id: destinationId },
+      include: {
+        transportRoutes: true,
+        accommodations: true,
+        costMultiplier: true,
+        activities: true,
+        itineraryDays: true
+      }
+    });
+
+    if (!dbDest) {
+      return NextResponse.json({ error: 'Destination not found' }, { status: 404 });
+    }
+
+    const destination = mapPrismaToDestination(dbDest);
+    
+    // Server-side calculation using trusted DB data
     const costInfo = calculateTripCost(destination, query);
     
     return NextResponse.json({ costInfo });
