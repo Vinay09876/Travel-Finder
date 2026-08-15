@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { SearchQuery, Destination, CalculatedCost } from '@/types';
+import { AlertCircle } from 'lucide-react';
 import { DESTINATIONS, DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
 import { Navbar } from './Navbar';
 import { Footer } from './Footer';
@@ -38,17 +39,48 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
   // Saved / Bookmarked Trips
   const [savedTripIds, setSavedTripIds] = useState<string[]>(['goa', 'rishikesh']);
 
+  // Detail View State
+  const [destinationCache, setDestinationCache] = useState<Record<string, Destination>>({});
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [detailError, setDetailError] = useState<string | null>(null);
+
   // Modal States
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [isAiItineraryOpen, setIsAiItineraryOpen] = useState(false);
   const [isSavedTripsOpen, setIsSavedTripsOpen] = useState(false);
   const [isDesignSystemOpen, setIsDesignSystemOpen] = useState(false);
 
-  const handleSelectDestination = (destId: string) => {
+  const handleSelectDestination = async (destId: string) => {
+    // 1. If already in cache (previously fetched from detail API), use it immediately
+    if (destinationCache[destId]) {
+      setSelectedDestId(destId);
+      setCurrentView('detail');
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+      return;
+    }
+
+    // 2. Fetch it from the /api/destinations/[id] API (even if in search results, per instructions)
     setSelectedDestId(destId);
     setCurrentView('detail');
-    if (typeof window !== 'undefined') {
-      window.scrollTo({ top: 0, behavior: 'smooth' });
+    setIsDetailLoading(true);
+    setDetailError(null);
+    if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+
+    try {
+      const res = await fetch(`/api/destinations/${destId}`);
+      if (!res.ok) {
+        throw new Error('Destination not found');
+      }
+      const data = await res.json();
+      if (!data.destination) {
+        throw new Error('Invalid destination data');
+      }
+      setDestinationCache((prev) => ({ ...prev, [destId]: data.destination }));
+    } catch (err) {
+      console.error(err);
+      setDetailError('Unable to load destination details. Please try again.');
+    } finally {
+      setIsDetailLoading(false);
     }
   };
 
@@ -110,6 +142,7 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
   };
 
   const activeDestination =
+    destinationCache[selectedDestId] ||
     apiResults?.find((r) => r.destination.id === selectedDestId)?.destination ||
     initialDestinations.find((d) => d.id === selectedDestId) ||
     initialDestinations[0];
@@ -197,14 +230,35 @@ export const TravelFinderApp: React.FC<TravelFinderAppProps> = ({
         )}
 
         {/* VIEW 3: DESTINATION DETAIL VIEW */}
-        {currentView === 'detail' && activeDestination && (
-          <DestinationDetailView
-            destination={activeDestination}
-            query={query}
-            onChangeQuery={setQuery}
-            onBackToResults={() => setCurrentView('results')}
-            onOpenAiItinerary={() => setIsAiItineraryOpen(true)}
-          />
+        {currentView === 'detail' && (
+          isDetailLoading ? (
+            <div className="w-full max-w-7xl mx-auto px-4 py-24 flex flex-col items-center justify-center min-h-[50vh]">
+              <div className="w-12 h-12 border-4 border-teal-200 border-t-teal-600 rounded-full animate-spin mb-4"></div>
+              <p className="text-slate-600 font-medium">Loading destination details...</p>
+            </div>
+          ) : detailError ? (
+            <div className="w-full max-w-7xl mx-auto px-4 py-24 flex flex-col items-center justify-center min-h-[50vh]">
+              <div className="w-16 h-16 bg-red-50 text-red-600 rounded-full flex items-center justify-center mb-4">
+                <AlertCircle className="w-8 h-8" />
+              </div>
+              <h2 className="text-xl font-bold text-slate-900 mb-2">Oops, something went wrong</h2>
+              <p className="text-slate-600 mb-6">{detailError}</p>
+              <button 
+                onClick={() => setCurrentView('results')} 
+                className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium transition-colors cursor-pointer"
+              >
+                Go Back
+              </button>
+            </div>
+          ) : activeDestination ? (
+            <DestinationDetailView
+              destination={activeDestination}
+              query={query}
+              onChangeQuery={setQuery}
+              onBackToResults={() => setCurrentView('results')}
+              onOpenAiItinerary={() => setIsAiItineraryOpen(true)}
+            />
+          ) : null
         )}
       </main>
 
