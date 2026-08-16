@@ -10,8 +10,8 @@ export async function checkRateLimit(
 ) {
   const windowStart = new Date(Date.now() - windowMs);
 
-  // Run cleanup of old records for this endpoint in the background (fire and forget)
-  prisma.rateLimit.deleteMany({
+  // Run cleanup of old records for this endpoint
+  await prisma.rateLimit.deleteMany({
     where: {
       endpoint,
       createdAt: { lt: windowStart }
