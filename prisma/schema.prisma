@@ -36,9 +36,16 @@ model Destination {
   bestMonths       String[]
   weatherNotes     String
   
-  // Storing distance matrix as JSON { "Mumbai": 580, "Delhi": 1850, ... }
-  distanceKm       Json
+  // Geographic coordinates for algorithmic cost (Haversine)
+  lat              Float?
+  lng              Float?
+  
+  // To distinguish curated seeds from dynamic generations
+  source           String   @default("curated") // 'curated' | 'dynamic'
 
+  // Storing distance matrix as JSON { "Mumbai": 580, "Delhi": 1850, ... }
+  // Optional because dynamically generated destinations will rely on lat/lng Haversine calculations
+  distanceKm       Json?
   // Important Info
   infoSafety         String
   infoConnectivity   String
@@ -168,4 +175,15 @@ model AiItinerary {
   preferences      Json     // vibe, startTime, dietary, etc.
   generatedContent Json     // The structured LLM response matching ItineraryDay array format
   createdAt        DateTime @default(now())
+}
+
+model RateLimit {
+  id        String   @id @default(cuid())
+  ip        String?
+  userId    String?
+  endpoint  String
+  createdAt DateTime @default(now())
+
+  @@index([ip, endpoint, createdAt])
+  @@index([userId, endpoint, createdAt])
 }

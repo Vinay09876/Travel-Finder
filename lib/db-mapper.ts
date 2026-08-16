@@ -11,8 +11,7 @@ type FullPrismaDestination = PrismaDestination & {
 };
 
 export function mapPrismaToDestination(dbDest: FullPrismaDestination): Destination {
-  // Map distanceKm
-  const distanceKm = dbDest.distanceKm as Record<CityOrigin, number>;
+  // Mapping transportRoutes back to Record<CityOrigin, TransportOption[]>
 
   // Map transportRoutes back to Record<CityOrigin, TransportOption[]>
   const transportOptions: Record<CityOrigin, TransportOption[]> = {} as any;
@@ -36,6 +35,9 @@ export function mapPrismaToDestination(dbDest: FullPrismaDestination): Destinati
     name: dbDest.name,
     state: dbDest.state,
     region: dbDest.region as any,
+    lat: dbDest.lat ?? undefined,
+    lng: dbDest.lng ?? undefined,
+    source: dbDest.source,
     tagline: dbDest.tagline,
     shortDescription: dbDest.shortDescription,
     fullDescription: dbDest.fullDescription,
@@ -46,7 +48,7 @@ export function mapPrismaToDestination(dbDest: FullPrismaDestination): Destinati
     bestSeason: dbDest.bestSeason,
     bestMonths: dbDest.bestMonths,
     weatherNotes: dbDest.weatherNotes,
-    distanceKm,
+    distanceKm: dbDest.distanceKm ? (dbDest.distanceKm as Record<CityOrigin, number>) : undefined,
     transportOptions,
     stayOptions: dbDest.accommodations.map(acc => ({
       tier: acc.tier as StayTier,

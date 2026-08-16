@@ -25,6 +25,12 @@ import {
 import { Destination, SearchQuery, StayTier, TransportPreference } from '@/types';
 import { calculateTripCost } from '@/lib/cost-calculator';
 import { formatINR, getFallbackImage } from '@/lib/utils';
+import dynamic from 'next/dynamic';
+
+const InteractiveMap = dynamic(() => import('./InteractiveMap'), { 
+  ssr: false, 
+  loading: () => <div className="w-full h-80 sm:h-96 rounded-2xl bg-slate-100 animate-pulse border border-slate-200 flex items-center justify-center text-slate-400">Loading Map...</div> 
+});
 
 export interface DestinationDetailViewProps {
   destination: Destination;
@@ -67,7 +73,7 @@ export const DestinationDetailView: React.FC<DestinationDetailViewProps> = ({
     }
   };
 
-  const transportOptionsList = destination.transportOptions[query.fromCity] || destination.transportOptions['Mumbai'] || [];
+  const transportOptionsList = destination.transportOptions?.[query.fromCity] || destination.transportOptions?.['Mumbai'] || [];
 
   return (
     <div id="destination-detail-page" className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
@@ -181,7 +187,18 @@ export const DestinationDetailView: React.FC<DestinationDetailViewProps> = ({
         </div>
       </section>
 
-      {/* 2. INTERACTIVE BUDGET CUSTOMIZER & 5-PILLAR BREAKDOWN */}
+      {/* 2. DESTINATION MAP */}
+      {destination.lat && destination.lng && (
+        <section className="mb-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+          <InteractiveMap 
+            lat={destination.lat} 
+            lng={destination.lng} 
+            name={destination.name} 
+          />
+        </section>
+      )}
+
+      {/* 3. INTERACTIVE BUDGET CUSTOMIZER & 5-PILLAR BREAKDOWN */}
       <section id="budget-breakdown-section" className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-10">
         {/* Left 2 Cols: Itemized 5-Pillar Breakdown */}
         <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-7 shadow-xs">
@@ -273,7 +290,7 @@ export const DestinationDetailView: React.FC<DestinationDetailViewProps> = ({
                   <div>
                     <h3 className="text-sm font-bold text-slate-900">2. Stay / Accommodation ({query.durationDays - 1} Nights)</h3>
                     <p className="text-xs text-slate-500">
-                      {costInfo.selectedStay.name} ({formatINR(costInfo.selectedStay.costPerNightPerRoom)}/night)
+                      {costInfo.selectedStay?.name || 'Standard Accommodation'} ({formatINR(costInfo.selectedStay?.costPerNightPerRoom || 1500)}/night)
                     </p>
                   </div>
                 </div>

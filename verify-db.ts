@@ -35,7 +35,7 @@ async function main() {
     }
 
     // Check transport options
-    const staticTransportCount = Object.values(staticDest.transportOptions).flat().length;
+    const staticTransportCount = Object.values(staticDest.transportOptions || {}).flat().length;
     if (staticTransportCount !== dbDest.transportRoutes.length) {
       console.error(`Mismatch transport: ${staticDest.id} (Static: ${staticTransportCount}, DB: ${dbDest.transportRoutes.length})`);
       hasMismatches = true;

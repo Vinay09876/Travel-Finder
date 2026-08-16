@@ -6,10 +6,11 @@ import {
   Copy,
   Check,
 } from 'lucide-react';
-import { Destination, SearchQuery, TripVibe } from '@/types';
+import { Destination, SearchQuery, TripVibe, ItineraryDay } from '@/types';
 import { formatINR } from '@/lib/utils';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { getAnonymousUserId } from '@/lib/user-identity';
 
 export interface AiItineraryModalProps {
   destination: Destination;
@@ -30,6 +31,8 @@ export const AiItineraryModal: React.FC<AiItineraryModalProps> = ({
   const [isGenerating, setIsGenerating] = useState(false);
   const [copied, setCopied] = useState(false);
   const [hasGenerated, setHasGenerated] = useState(false);
+  const [generatedItinerary, setGeneratedItinerary] = useState<ItineraryDay[] | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const vibeOptions: { id: TripVibe; label: string; icon: string; desc: string }[] = [
     { id: 'relaxed', label: 'Relaxed & Scenic', icon: '🌿', desc: 'Slow mornings, sunset views, low rush' },
@@ -39,17 +42,56 @@ export const AiItineraryModal: React.FC<AiItineraryModalProps> = ({
     { id: 'budget_saver', label: 'Maximum Budget Saver', icon: '💰', desc: 'Free spots, cheap transit & street stalls' },
   ];
 
-  const handleGenerate = () => {
+  const handleGenerate = async () => {
     setIsGenerating(true);
-    setTimeout(() => {
-      setIsGenerating(false);
+    setErrorMsg(null);
+    try {
+      const anonId = getAnonymousUserId();
+
+      const res = await fetch('/api/ai-itinerary', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-user-id': anonId,
+        },
+        body: JSON.stringify({
+          destinationId: destination.id,
+          query,
+          preferences: { vibe: selectedVibe, startTime, dietary },
+        }),
+      });
+
+      if (!res.ok) {
+        let errMessage = 'AI generation failed.';
+        try {
+          const errData = await res.json();
+          if (errData.error) errMessage = errData.error;
+        } catch {
+          // ignore
+        }
+        throw new Error(errMessage);
+      }
+
+      const data = await res.json();
+      if (!data.generatedContent) {
+        throw new Error('Invalid response from AI.');
+      }
+
+      setGeneratedItinerary(data.generatedContent);
       setHasGenerated(true);
-    }, 750);
+    } catch (err: unknown) {
+      console.error(err);
+      const msg = err instanceof Error ? err.message : 'AI is resting right now, please try again later.';
+      setErrorMsg(msg);
+      setHasGenerated(false);
+    } finally {
+      setIsGenerating(false);
+    }
   };
 
   const handleCopy = () => {
-    const itineraryText = `✨ TravelFinder AI Itinerary: ${destination.name} (${query.durationDays} Days)\nStarting from: ${query.fromCity}\nTravelers: ${query.travelers}\nVibe: ${selectedVibe}\n\n${destination.sampleItinerary
-      .slice(0, query.durationDays)
+    if (!generatedItinerary) return;
+    const itineraryText = `✨ TravelFinder AI Itinerary: ${destination.name} (${query.durationDays} Days)\nStarting from: ${query.fromCity}\nTravelers: ${query.travelers}\nVibe: ${selectedVibe}\n\n${generatedItinerary
       .map(
         (day) =>
           `📅 DAY ${day.dayNumber}: ${day.title}\n• Morning: ${day.morning.activity}\n• Afternoon: ${day.afternoon.activity}\n• Evening: ${day.evening.activity}\n`
@@ -207,6 +249,12 @@ export const AiItineraryModal: React.FC<AiItineraryModalProps> = ({
           </Button>
         </div>
 
+        {errorMsg && (
+          <div className="p-3 text-xs font-bold text-red-700 bg-red-50 border border-red-200 rounded-xl text-center">
+            {errorMsg}
+          </div>
+        )}
+
         {/* Output Preview */}
         {hasGenerated && (
           <div className="border border-teal-200 bg-teal-50/40 rounded-2xl p-5 space-y-4 animate-in fade-in duration-300">
@@ -233,7 +281,7 @@ export const AiItineraryModal: React.FC<AiItineraryModalProps> = ({
 
             {/* Day highlights */}
             <div className="space-y-3 pt-2">
-              {destination.sampleItinerary.slice(0, query.durationDays).map((day) => (
+              {generatedItinerary?.map((day) => (
                 <div key={day.dayNumber} className="bg-white rounded-xl p-3.5 border border-slate-200/80 text-xs">
                   <div className="font-bold text-slate-900 mb-1 flex items-center justify-between">
                     <span>Day {day.dayNumber}: {day.title}</span>

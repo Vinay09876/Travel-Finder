@@ -1,10 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
+import { UuidSchema } from '@/lib/validations';
 
 async function getOrCreateUser(anonId: string | null) {
   if (!anonId) throw new Error('Missing X-User-Id header');
-  const email = `anon-${anonId}@travelfinder.local`;
+  const validId = UuidSchema.parse(anonId);
+  const email = `anon-${validId}@travelfinder.local`;
   
   let user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
@@ -22,7 +24,12 @@ export async function DELETE(request: Request, context: any) {
   const { destinationId } = params;
   
   try {
-    const user = await getOrCreateUser(anonId);
+    let user;
+    try {
+      user = await getOrCreateUser(anonId);
+    } catch (e) {
+      return NextResponse.json({ error: 'Invalid user identity' }, { status: 400 });
+    }
 
     // Delete if exists, otherwise do nothing (graceful)
     await prisma.savedTrip.deleteMany({

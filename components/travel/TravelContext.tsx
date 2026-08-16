@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Destination, SearchQuery } from '@/types';
 import { DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
+import { getAnonymousUserId } from '@/lib/user-identity';
 
 interface TravelContextType {
   savedTripIds: string[];
@@ -30,11 +31,8 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
   const [isDesignSystemOpen, setIsDesignSystemOpen] = useState(false);
 
   useEffect(() => {
-    let anonId = localStorage.getItem('travelFinder_anon_userId');
-    if (!anonId) {
-      anonId = crypto.randomUUID();
-      localStorage.setItem('travelFinder_anon_userId', anonId);
-    }
+    const anonId = getAnonymousUserId();
+    if (!anonId) return;
 
     const fetchSavedTrips = async () => {
       try {
@@ -59,7 +57,7 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const handleToggleSave = async (destId: string, destinationObj?: Destination, query?: SearchQuery) => {
-    const anonId = localStorage.getItem('travelFinder_anon_userId');
+    const anonId = getAnonymousUserId();
     if (!anonId) return;
 
     const isSaving = !savedTripIds.includes(destId);

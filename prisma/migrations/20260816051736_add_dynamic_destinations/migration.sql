@@ -1,0 +1,5 @@
+-- AlterTable
+ALTER TABLE "Destination" ADD COLUMN     "lat" DOUBLE PRECISION,
+ADD COLUMN     "lng" DOUBLE PRECISION,
+ADD COLUMN     "source" TEXT NOT NULL DEFAULT 'curated',
+ALTER COLUMN "distanceKm" DROP NOT NULL;

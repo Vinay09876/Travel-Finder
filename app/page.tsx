@@ -3,6 +3,7 @@
 import React, { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { SearchForm } from '@/components/travel/SearchForm';
+import { DirectDestinationSearch } from '@/components/travel/DirectDestinationSearch';
 import { PopularDestinations } from '@/components/travel/PopularDestinations';
 import { TrustSection } from '@/components/travel/TrustSection';
 import { DESTINATIONS, DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
@@ -60,11 +61,18 @@ export default function HomePage() {
           </h1>
 
           <p className="text-sm sm:text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">
-            Enter your departure city, budget, group size, and travel month. We calculate realistic trip estimates covering transport, stays, food, local travel, and activities.
+            Search for a specific destination anywhere in India, or use Budget Discovery to find places you can afford.
           </p>
         </div>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-4xl mx-auto space-y-8">
+          <DirectDestinationSearch />
+          
+          <div className="relative py-2 flex items-center justify-center">
+            <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-slate-200"></div></div>
+            <div className="relative bg-[#f8fafc] px-4 text-xs font-bold text-slate-400 uppercase tracking-widest">OR USE BUDGET DISCOVERY</div>
+          </div>
+
           <SearchForm
             query={query}
             onChangeQuery={setQuery}

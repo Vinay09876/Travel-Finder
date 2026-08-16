@@ -105,7 +105,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
           <div className="flex flex-col">
             <label htmlFor="origin-city-select" className="text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5 flex items-center gap-1.5">
               <MapPin className="w-3.5 h-3.5 text-teal-600" />
-              <span>Starting From</span>
+              <span>Where are you starting from?</span>
             </label>
             <div className="relative">
               <select

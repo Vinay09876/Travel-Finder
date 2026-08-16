@@ -1,4 +1,5 @@
 import { Destination, SearchQuery, CalculatedCost, TransportOption } from '@/types';
+import { ORIGIN_COORDS, calculateHaversineDistance } from './distance';
 
 /**
  * Calculates a realistic 5-pillar estimated cost for a given destination and search query:
@@ -23,17 +24,55 @@ export function calculateTripCost(
   } = query;
 
   // 1. Calculate Transport
-  const availableOptions =
-    destination.transportOptions[fromCity] || destination.transportOptions['Mumbai'] || [];
+  let availableOptions = destination.transportOptions?.[fromCity] || [];
+    
+  // FALLBACK: If absolutely no curated transport routes exist (Dynamic Destination), generate algorithmic fallback
+  if (availableOptions.length === 0 && destination.lat && destination.lng) {
+    const originCoords = ORIGIN_COORDS[fromCity];
+    if (originCoords) {
+      const distKm = calculateHaversineDistance(
+        originCoords.lat, originCoords.lng,
+        destination.lat, destination.lng
+      );
+      
+      if (distKm < 500) {
+        availableOptions = [{
+          mode: 'bus',
+          name: `AC Sleeper Bus (${Math.round(distKm)} km)`,
+          durationHours: Math.round(distKm / 50),
+          costPerPersonRoundTrip: Math.round(distKm * 3 * 2),
+          description: 'Estimated standard AC sleeper bus for short-medium distances.',
+          recommended: true
+        }];
+      } else {
+        availableOptions = [{
+          mode: 'flight',
+          name: `Economy Flight (${Math.round(distKm)} km)`,
+          durationHours: Math.max(1, Math.round(distKm / 600)),
+          costPerPersonRoundTrip: Math.round(distKm * 6.5 * 2),
+          description: 'Estimated economy flight for longer distances.',
+          recommended: true
+        }];
+      }
+    }
+  }
+
   let selectedTransport: TransportOption;
 
-  if (transportPreference !== 'all') {
+  if (transportPreference !== 'all' && availableOptions.length > 0) {
     const matched = availableOptions.find((opt) => opt.mode === transportPreference);
     selectedTransport =
       matched || availableOptions.find((opt) => opt.recommended) || availableOptions[0];
   } else {
     // Pick recommended or most budget-friendly reasonable option
-    selectedTransport = availableOptions.find((opt) => opt.recommended) || availableOptions[0];
+    selectedTransport = availableOptions.find((opt) => opt.recommended) || availableOptions[0] || {
+      mode: 'bus',
+      name: 'Default Bus Estimate',
+      durationHours: 12,
+      costPerPersonRoundTrip: 2000,
+      description: 'Fallback transport estimate.',
+      recommended: true
+    };
   }
 
   const transportTotal = (selectedTransport?.costPerPersonRoundTrip ?? 1500) * travelers;
@@ -89,19 +128,25 @@ export function calculateTripCost(
     budgetStatus = 'over';
   }
 
+  let isInternational = false;
+  if (destination.region === 'International') {
+    isInternational = true;
+  }
+
   return {
-    totalEstimatedCost,
-    perPersonCost,
-    transportTotal,
-    stayTotal,
-    foodTotal,
-    localTransportTotal,
-    activitiesTotal,
-    bufferTotal,
-    budgetRemaining,
-    fitsBudget,
-    budgetStatus,
+    totalEstimatedCost: isInternational ? 0 : (subtotal + bufferTotal),
+    perPersonCost: isInternational ? 0 : Math.round((subtotal + bufferTotal) / travelers),
+    transportTotal: isInternational ? 0 : transportTotal,
+    stayTotal: isInternational ? 0 : stayTotal,
+    foodTotal: isInternational ? 0 : foodTotal,
+    localTransportTotal: isInternational ? 0 : localTransportTotal,
+    activitiesTotal: isInternational ? 0 : activitiesTotal,
+    bufferTotal: isInternational ? 0 : bufferTotal,
+    budgetRemaining: isInternational ? budget : budgetRemaining,
+    fitsBudget: isInternational ? true : fitsBudget,
+    budgetStatus: isInternational ? 'fits' : budgetStatus,
     selectedTransport,
     selectedStay,
+    isInternational // New flag for the frontend to show warning
   };
 }
