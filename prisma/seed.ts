@@ -107,7 +107,7 @@ async function main() {
     });
 
     // Transport routes (since it's a Record<string, array> we loop)
-    for (const [originCity, routes] of Object.entries(dest.transportOptions)) {
+    for (const [originCity, routes] of Object.entries(dest.transportOptions || {})) {
       for (const route of routes) {
         await prisma.transportRoute.create({
           data: {

@@ -3,15 +3,30 @@ import { calculateTripCost } from '@/lib/cost-calculator';
 import { SearchQuery } from '@/types';
 import prisma from '@/lib/prisma';
 import { mapPrismaToDestination } from '@/lib/db-mapper';
+import { SearchQuerySchema, checkPayloadSize } from '@/lib/validations';
+import { z } from 'zod';
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json();
-    const { destinationId, query } = body as { destinationId: string, query: SearchQuery };
-
-    if (!destinationId || !query) {
-      return NextResponse.json({ error: 'Missing destinationId or query' }, { status: 400 });
+    try {
+      checkPayloadSize(request, 10000);
+    } catch (e) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
+
+    const body = await request.json();
+    
+    let parsedBody;
+    try {
+      parsedBody = z.object({
+        destinationId: z.string().min(1).max(50),
+        query: SearchQuerySchema
+      }).parse(body);
+    } catch (e) {
+      return NextResponse.json({ error: 'Invalid request payload', details: e }, { status: 400 });
+    }
+
+    const { destinationId, query } = parsedBody as { destinationId: string, query: SearchQuery };
 
     // Fetch the destination and all required pricing data from PostgreSQL securely
     const dbDest = await prisma.destination.findUnique({

@@ -80,7 +80,10 @@ export interface Destination {
   id: string;
   name: string;
   state: string;
-  region: 'North' | 'South' | 'West' | 'East' | 'Central';
+  region: 'North' | 'South' | 'West' | 'East' | 'Central' | 'International';
+  lat?: number;
+  lng?: number;
+  source?: string;
   tagline: string;
   shortDescription: string;
   fullDescription: string;
@@ -91,8 +94,8 @@ export interface Destination {
   bestSeason: string;
   bestMonths: string[];
   weatherNotes: string;
-  distanceKm: Record<CityOrigin, number>;
-  transportOptions: Record<CityOrigin, TransportOption[]>;
+  distanceKm?: Record<CityOrigin, number>;
+  transportOptions?: Record<CityOrigin, TransportOption[]>;
   stayOptions: StayOption[];
   dailyFoodCostPerPerson: {
     budget: number;
@@ -131,7 +134,8 @@ export interface CalculatedCost {
   fitsBudget: boolean;
   budgetStatus: BudgetStatus;
   selectedTransport: TransportOption;
-  selectedStay: StayOption;
+  selectedStay?: StayOption;
+  isInternational?: boolean;
 }
 
 export interface SavedTrip {

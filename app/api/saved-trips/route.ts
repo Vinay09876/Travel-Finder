@@ -1,11 +1,14 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { mapPrismaToDestination } from '@/lib/db-mapper';
+import { UuidSchema, SearchQuerySchema, checkPayloadSize } from '@/lib/validations';
+import { z } from 'zod';
 
 // Helper to get or create anonymous user
 async function getOrCreateUser(anonId: string | null) {
   if (!anonId) throw new Error('Missing X-User-Id header');
-  const email = `anon-${anonId}@travelfinder.local`;
+  const validId = UuidSchema.parse(anonId);
+  const email = `anon-${validId}@travelfinder.local`;
   
   let user = await prisma.user.findUnique({ where: { email } });
   if (!user) {
@@ -22,7 +25,12 @@ async function getOrCreateUser(anonId: string | null) {
 export async function GET(request: Request) {
   const anonId = request.headers.get('x-user-id');
   try {
-    const user = await getOrCreateUser(anonId);
+    let user;
+    try {
+      user = await getOrCreateUser(anonId);
+    } catch (e) {
+      return NextResponse.json({ error: 'Invalid user identity' }, { status: 400 });
+    }
     
     const savedTrips = await prisma.savedTrip.findMany({
       where: { userId: user.id },
@@ -55,12 +63,40 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const anonId = request.headers.get('x-user-id');
   try {
-    const user = await getOrCreateUser(anonId);
+    try {
+      checkPayloadSize(request, 15000);
+    } catch (e) {
+      return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
+    }
+
+    let user;
+    try {
+      user = await getOrCreateUser(anonId);
+    } catch (e) {
+      return NextResponse.json({ error: 'Invalid user identity' }, { status: 400 });
+    }
+
     const body = await request.json();
-    const { destinationId, searchParams } = body;
     
-    if (!destinationId || !searchParams) {
-      return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+    let parsedBody;
+    try {
+      parsedBody = z.object({
+        destinationId: z.string().min(1).max(50),
+        searchParams: SearchQuerySchema
+      }).parse(body);
+    } catch (e) {
+      return NextResponse.json({ error: 'Invalid request payload', details: e }, { status: 400 });
+    }
+
+    const { destinationId, searchParams } = parsedBody;
+    
+    // Verify destination exists in DB before saving
+    const destExists = await prisma.destination.findUnique({
+      where: { id: destinationId },
+      select: { id: true }
+    });
+    if (!destExists) {
+      return NextResponse.json({ error: 'Destination not found' }, { status: 404 });
     }
 
     // Handle duplicate constraint gracefully
