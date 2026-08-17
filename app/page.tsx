@@ -42,7 +42,23 @@ export default function HomePage() {
   };
 
   const handleSelectDestination = (destId: string) => {
-    router.push(`/destination/${destId}`);
+    const params = new URLSearchParams({
+      origin: query.fromCity,
+      budget: query.budget.toString(),
+      travelers: query.travelers.toString(),
+      duration: query.durationDays.toString(),
+      month: query.month,
+    });
+    if (query.category && query.category !== 'all') {
+      params.append('category', query.category);
+    }
+    if (query.stayTier) {
+      params.append('stayTier', query.stayTier);
+    }
+    if (query.transportPreference && query.transportPreference !== 'all') {
+      params.append('transportPreference', query.transportPreference);
+    }
+    router.push(`/destination/${destId}?${params.toString()}`);
   };
 
   return (

@@ -27,7 +27,11 @@ export const SearchForm: React.FC<SearchFormProps> = ({
   };
 
   const handleBudgetChange = (amount: number) => {
-    onChangeQuery({ ...query, budget: Math.max(1000, amount) });
+    onChangeQuery({ ...query, budget: amount });
+  };
+
+  const handleBudgetBlur = () => {
+    onChangeQuery({ ...query, budget: Math.max(1000, query.budget || 0) });
   };
 
   const handleTravelersChange = (delta: number) => {
@@ -76,14 +80,13 @@ export const SearchForm: React.FC<SearchFormProps> = ({
                     month: preset.month,
                   });
                 }}
-                className={`text-xs px-3 py-1.5 rounded-full border transition-all text-left font-medium cursor-pointer ${
-                  query.fromCity === preset.fromCity &&
+                className={`text-xs px-3 py-1.5 rounded-full border transition-all text-left font-medium cursor-pointer ${query.fromCity === preset.fromCity &&
                   query.budget === preset.budget &&
                   query.travelers === preset.travelers &&
                   query.month === preset.month
-                    ? 'bg-teal-50 border-teal-300 text-teal-800 ring-2 ring-teal-500/20'
-                    : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
-                }`}
+                  ? 'bg-teal-50 border-teal-300 text-teal-800 ring-2 ring-teal-500/20'
+                  : 'bg-slate-50 hover:bg-slate-100 border-slate-200 text-slate-700'
+                  }`}
               >
                 {preset.label}
               </button>
@@ -140,11 +143,12 @@ export const SearchForm: React.FC<SearchFormProps> = ({
               <input
                 id="budget-input"
                 type="number"
-                min={2000}
+                min={1000}
                 max={200000}
                 step={500}
-                value={query.budget}
-                onChange={(e) => handleBudgetChange(Number(e.target.value))}
+                value={query.budget || ''}
+                onChange={(e) => handleBudgetChange(e.target.value === '' ? 0 : Number(e.target.value))}
+                onBlur={handleBudgetBlur}
                 className="w-full h-12 pl-8 pr-3 bg-slate-50 hover:bg-slate-100/80 focus:bg-white text-slate-900 font-bold text-base rounded-xl border border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20 focus:outline-hidden transition-all"
                 placeholder="e.g. 10000"
               />
@@ -159,7 +163,7 @@ export const SearchForm: React.FC<SearchFormProps> = ({
             </label>
             <div className="flex items-center justify-between h-12 px-3 bg-slate-50 rounded-xl border border-slate-300">
               <span className="text-sm font-semibold text-slate-900 truncate">
-                {query.travelers} {query.travelers === 1 ? 'Solo' : query.travelers === 2 ? '2 People' : `${query.travelers} People`}
+                {query.travelers} {query.travelers === 1 ? 'Solo' : query.travelers === 2 ? 'People' : `People`}
               </span>
               <div className="flex items-center gap-1">
                 <button
@@ -258,11 +262,10 @@ export const SearchForm: React.FC<SearchFormProps> = ({
                 id={`budget-chip-${preset}`}
                 type="button"
                 onClick={() => handleBudgetChange(preset)}
-                className={`text-xs px-2.5 py-1.5 rounded-lg font-semibold border transition-all shrink-0 cursor-pointer ${
-                  query.budget === preset
-                    ? 'bg-slate-900 text-white border-slate-900'
-                    : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
-                }`}
+                className={`text-xs px-2.5 py-1.5 rounded-lg font-semibold border transition-all shrink-0 cursor-pointer ${query.budget === preset
+                  ? 'bg-slate-900 text-white border-slate-900'
+                  : 'bg-white text-slate-700 border-slate-200 hover:border-slate-300 hover:bg-slate-50'
+                  }`}
               >
                 ₹{(preset / 1000).toFixed(0)}k
               </button>
