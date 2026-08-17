@@ -77,7 +77,7 @@ function SearchResultsContent() {
   };
 
   const handleSelectDestination = (destId: string) => {
-    router.push(`/destination/${destId}`);
+    router.push(`/destination/${destId}?${searchParams.toString()}`);
   };
 
   const handleBackToHome = () => {
