@@ -3,7 +3,7 @@ import prisma from '@/lib/prisma';
 import { mapPrismaToDestination } from '@/lib/db-mapper';
 import { z } from 'zod';
 import { generateObject } from 'ai';
-import { google } from '@ai-sdk/google';
+import { withGeminiFallback } from '@/lib/gemini-client';
 import { AiItineraryRequestSchema, UuidSchema, checkPayloadSize } from '@/lib/validations';
 import { getClientIp } from '@/lib/client-ip';
 import { checkRateLimit } from '@/lib/rate-limit';
@@ -138,11 +138,13 @@ Instructions:
 ${retryContext}
       `;
 
-      const { object } = await generateObject({
-        model: google('gemini-3.6-flash'),
-        schema: itinerarySchema,
-        prompt: contextPrompt,
-      });
+      const { object } = await withGeminiFallback((model) =>
+        generateObject({
+          model,
+          schema: itinerarySchema,
+          prompt: contextPrompt,
+        })
+      );
       return object;
     };
 

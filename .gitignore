@@ -47,3 +47,7 @@ next-env.d.ts
 .agents/
 .claude/
 .windsurf/
+
+# batch destination-generation run state (local only)
+scripts/.batch-progress.json
+scripts/batch-logs/

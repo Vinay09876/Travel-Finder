@@ -18,6 +18,7 @@ export function TravelShell({ children }: { children: React.ReactNode }) {
     savedDestinations,
     isLoadingSavedTrips,
     handleToggleSave,
+    detectedOriginCity,
     isHowItWorksOpen,
     setIsHowItWorksOpen,
     isSavedTripsOpen,
@@ -35,9 +36,10 @@ export function TravelShell({ children }: { children: React.ReactNode }) {
   if (pathname?.startsWith('/destination')) currentView = 'detail';
 
   const activeQuery = useMemo(() => {
-    if (!searchParams) return DEFAULT_SEARCH_QUERY;
+    const fallbackCity = detectedOriginCity || DEFAULT_SEARCH_QUERY.fromCity;
+    if (!searchParams) return { ...DEFAULT_SEARCH_QUERY, fromCity: fallbackCity };
     return {
-      fromCity: (searchParams.get('origin') as CityOrigin) || DEFAULT_SEARCH_QUERY.fromCity,
+      fromCity: (searchParams.get('origin') as CityOrigin) || fallbackCity,
       budget: Number(searchParams.get('budget')) || DEFAULT_SEARCH_QUERY.budget,
       travelers: Number(searchParams.get('travelers')) || DEFAULT_SEARCH_QUERY.travelers,
       durationDays: Number(searchParams.get('duration')) || DEFAULT_SEARCH_QUERY.durationDays,
@@ -46,7 +48,7 @@ export function TravelShell({ children }: { children: React.ReactNode }) {
       stayTier: (searchParams.get('stayTier') as StayTier) || DEFAULT_SEARCH_QUERY.stayTier,
       transportPreference: (searchParams.get('transportPreference') as TransportPreference) || DEFAULT_SEARCH_QUERY.transportPreference,
     };
-  }, [searchParams]);
+  }, [searchParams, detectedOriginCity]);
 
   const handleNavigateHome = () => {
     router.push('/');

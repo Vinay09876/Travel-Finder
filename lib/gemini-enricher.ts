@@ -1,7 +1,7 @@
 import { generateObject } from 'ai';
-import { google } from '@ai-sdk/google';
 import { z } from 'zod';
 import { OsmPoi } from './osm-poi';
+import { withGeminiFallback } from './gemini-client';
 
 export const DestinationEnrichmentSchema = z.object({
   tagline: z.string().describe("A short, catchy tagline (max 60 chars)"),
@@ -44,11 +44,6 @@ export const DestinationEnrichmentSchema = z.object({
 });
 
 export async function enrichDestination(destinationName: string, state: string, pois: OsmPoi[]) {
-  const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
-  if (!apiKey || apiKey.includes('YOUR_GEMINI_KEY_HERE')) {
-    throw new Error('GOOGLE_GENERATIVE_AI_API_KEY is missing');
-  }
-
   const validPoiNames = pois.map(p => p.name);
   const allowedGeneric = ['Free Time', 'Relaxation', 'Local Exploration'];
   const allAllowed = [...validPoiNames, ...allowedGeneric].map(n => n.toLowerCase().trim());
@@ -76,11 +71,13 @@ CRITICAL RULES:
 
   let lastError = null;
   for (let attempt = 1; attempt <= 3; attempt++) {
-    const { object } = await generateObject({
-      model: google('gemini-3.6-flash'),
-      schema: DestinationEnrichmentSchema,
-      prompt: attempt === 1 ? prompt : prompt + `\n\nRETRY INSTRUCTION: Your previous attempt was rejected because you either invented a place not in the factual POIs list, or used an invalid activity name. You MUST ONLY use the EXACT POI names provided, or the generic terms. Do NOT include unverified places in descriptions.`,
-    });
+    const { object } = await withGeminiFallback((model) =>
+      generateObject({
+        model,
+        schema: DestinationEnrichmentSchema,
+        prompt: attempt === 1 ? prompt : prompt + `\n\nRETRY INSTRUCTION: Your previous attempt was rejected because you either invented a place not in the factual POIs list, or used an invalid activity name. You MUST ONLY use the EXACT POI names provided, or the generic terms. Do NOT include unverified places in descriptions.`,
+      })
+    );
 
     // Validate the generated object
     let isValid = true;
