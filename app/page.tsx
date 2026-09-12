@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { SearchForm } from '@/components/travel/SearchForm';
 import { DirectDestinationSearch } from '@/components/travel/DirectDestinationSearch';
@@ -14,8 +14,14 @@ export default function HomePage() {
   const router = useRouter();
   const [query, setQuery] = useState<SearchQuery>(DEFAULT_SEARCH_QUERY);
   const [isSearching, setIsSearching] = useState(false);
+  const hasUserPickedCity = useRef(false);
 
-  const { savedTripIds, handleToggleSave } = useTravelContext();
+  const { savedTripIds, handleToggleSave, detectedOriginCity } = useTravelContext();
+
+  useEffect(() => {
+    if (hasUserPickedCity.current || !detectedOriginCity) return;
+    setQuery((prev) => ({ ...prev, fromCity: detectedOriginCity }));
+  }, [detectedOriginCity]);
 
   const handleFindTrips = (e?: React.FormEvent) => {
     e?.preventDefault();
@@ -91,7 +97,10 @@ export default function HomePage() {
 
           <SearchForm
             query={query}
-            onChangeQuery={setQuery}
+            onChangeQuery={(newQuery) => {
+              hasUserPickedCity.current = true;
+              setQuery(newQuery);
+            }}
             onSubmitSearch={handleFindTrips}
             isSearching={isSearching}
           />

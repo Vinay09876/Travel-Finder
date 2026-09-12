@@ -1,8 +1,9 @@
 'use client';
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import { Destination, SearchQuery } from '@/types';
+import { Destination, SearchQuery, CityOrigin } from '@/types';
 import { DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
+import { findNearestOriginCity } from '@/lib/distance';
 import { getAnonymousUserId } from '@/lib/user-identity';
 
 interface TravelContextType {
@@ -10,7 +11,8 @@ interface TravelContextType {
   savedDestinations: Destination[];
   isLoadingSavedTrips: boolean;
   handleToggleSave: (destId: string, destinationObj?: Destination, query?: SearchQuery) => Promise<void>;
-  
+  detectedOriginCity: CityOrigin | null;
+
   isHowItWorksOpen: boolean;
   setIsHowItWorksOpen: (val: boolean) => void;
   isSavedTripsOpen: boolean;
@@ -29,6 +31,25 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
   const [isHowItWorksOpen, setIsHowItWorksOpen] = useState(false);
   const [isSavedTripsOpen, setIsSavedTripsOpen] = useState(false);
   const [isDesignSystemOpen, setIsDesignSystemOpen] = useState(false);
+  const [detectedOriginCity, setDetectedOriginCity] = useState<CityOrigin | null>(null);
+
+  useEffect(() => {
+    if (!navigator.geolocation) return;
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nearestCity = findNearestOriginCity(
+          position.coords.latitude,
+          position.coords.longitude
+        );
+        setDetectedOriginCity(nearestCity as CityOrigin);
+      },
+      () => {
+        // Location denied or unavailable — callers fall back to the default origin city.
+      },
+      { timeout: 8000 }
+    );
+  }, []);
 
   useEffect(() => {
     const anonId = getAnonymousUserId();
@@ -109,6 +130,7 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
       savedDestinations,
       isLoadingSavedTrips,
       handleToggleSave,
+      detectedOriginCity,
       isHowItWorksOpen,
       setIsHowItWorksOpen,
       isSavedTripsOpen,

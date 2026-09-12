@@ -12,6 +12,21 @@ export const ORIGIN_COORDS: Record<string, { lat: number; lng: number }> = {
   Kochi: { lat: 9.9312, lng: 76.2673 },
 };
 
+export function findNearestOriginCity(lat: number, lng: number): string {
+  let nearestCity = 'Mumbai';
+  let minDistance = Infinity;
+
+  for (const [city, coords] of Object.entries(ORIGIN_COORDS)) {
+    const distance = calculateHaversineDistance(lat, lng, coords.lat, coords.lng);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearestCity = city;
+    }
+  }
+
+  return nearestCity;
+}
+
 export function calculateHaversineDistance(
   lat1: number,
   lon1: number,
