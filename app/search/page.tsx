@@ -60,18 +60,18 @@ function SearchResultsContent() {
     fetchResults();
   }, [searchParams]);
 
-  const handleSearchSubmit = (e?: React.FormEvent) => {
-    e?.preventDefault();
+  const handleSearchSubmit = (queryToSubmit?: SearchQuery) => {
+    const q = queryToSubmit || localQuery;
     const params = new URLSearchParams({
-      origin: localQuery.fromCity,
-      budget: localQuery.budget.toString(),
-      travelers: localQuery.travelers.toString(),
-      duration: localQuery.durationDays.toString(),
-      month: localQuery.month,
+      origin: q.fromCity,
+      budget: q.budget.toString(),
+      travelers: q.travelers.toString(),
+      duration: q.durationDays.toString(),
+      month: q.month,
     });
-    if (localQuery.category && localQuery.category !== 'all') params.append('category', localQuery.category);
-    if (localQuery.stayTier) params.append('stayTier', localQuery.stayTier);
-    if (localQuery.transportPreference && localQuery.transportPreference !== 'all') params.append('transportPreference', localQuery.transportPreference);
+    if (q.category && q.category !== 'all') params.append('category', q.category);
+    if (q.stayTier) params.append('stayTier', q.stayTier);
+    if (q.transportPreference && q.transportPreference !== 'all') params.append('transportPreference', q.transportPreference);
 
     router.push(`/search?${params.toString()}`);
   };
