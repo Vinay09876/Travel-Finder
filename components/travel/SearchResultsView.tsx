@@ -1,20 +1,27 @@
 'use client';
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
-  MapPin,
   ArrowLeft,
-  SlidersHorizontal,
   Users,
   Calendar,
   CheckCircle2,
   AlertCircle,
   Compass,
+  IndianRupee,
+  Minus,
+  Plus,
+  ChevronLeft,
+  ChevronRight,
+  ChevronDown,
+  RefreshCw,
+  MapPin,
 } from 'lucide-react';
-import { Destination, SearchQuery, TravelCategory, CalculatedCost } from '@/types';
-import { SearchForm } from './SearchForm';
-import { formatINR } from '@/lib/utils';
+import { Destination, SearchQuery, TravelCategory, CalculatedCost, CityOrigin } from '@/types';
+import { POPULAR_CITIES, MONTHS } from '@/lib/destinations';
 import { DestinationCard } from './DestinationCard';
+
+const RESULTS_PER_PAGE = 10;
 
 export interface SearchResultsViewProps {
   apiResults: { destination: Destination; costInfo: CalculatedCost }[];
@@ -22,7 +29,7 @@ export interface SearchResultsViewProps {
   onChangeQuery: (newQuery: SearchQuery) => void;
   onSelectDestination: (destId: string) => void;
   onBackToHome: () => void;
-  onSearch: () => void;
+  onSearch: (queryToSubmit?: SearchQuery) => void;
   isSearching: boolean;
   savedTripIds?: string[];
   onToggleSave?: (destId: string) => void;
@@ -44,7 +51,22 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   const [sortBy, setSortBy] = useState<SortOption>('best_match');
   const [selectedCategory, setSelectedCategory] = useState<TravelCategory>('all');
   const [statusFilter, setStatusFilter] = useState<'all' | 'fits' | 'near' | 'over'>('all');
-  const [isEditingSearch, setIsEditingSearch] = useState(false);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  // Draft copy of the query, edited inline in the criteria banner. Only
+  // committed (via onChangeQuery + onSearch) when "Update Results" is clicked,
+  // so typing in the budget field doesn't trigger a search on every keystroke.
+  const [draftQuery, setDraftQuery] = useState<SearchQuery>(query);
+  const isDirty = useMemo(() => JSON.stringify(draftQuery) !== JSON.stringify(query), [draftQuery, query]);
+
+  useEffect(() => {
+    setDraftQuery(query);
+  }, [query]);
+
+  const handleUpdateResults = () => {
+    onChangeQuery(draftQuery);
+    onSearch(draftQuery);
+  };
 
   const categories: { id: TravelCategory; label: string }[] = [
     { id: 'all', label: 'All Places' },
@@ -86,7 +108,26 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
         }
         return a.costInfo.totalEstimatedCost - b.costInfo.totalEstimatedCost;
       });
-  }, [apiResults, query, selectedCategory, statusFilter, sortBy]);
+  }, [apiResults, selectedCategory, statusFilter, sortBy]);
+
+  // Reset to page 1 whenever the filtered/sorted list changes shape
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedCategory, statusFilter, sortBy, apiResults]);
+
+  const totalPages = Math.max(1, Math.ceil(processedDestinations.length / RESULTS_PER_PAGE));
+  const paginatedDestinations = useMemo(() => {
+    const start = (currentPage - 1) * RESULTS_PER_PAGE;
+    return processedDestinations.slice(start, start + RESULTS_PER_PAGE);
+  }, [processedDestinations, currentPage]);
+
+  const goToPage = (page: number) => {
+    const clamped = Math.min(Math.max(1, page), totalPages);
+    setCurrentPage(clamped);
+    if (typeof window !== 'undefined') {
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  };
 
   // Overall counts across all categories
   const allWithCosts = useMemo(() => {
@@ -99,7 +140,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
 
   return (
     <div id="search-results-page" className="w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8">
-      {/* Top Breadcrumb & Modify Search */}
+      {/* Top Breadcrumb */}
       <div className="flex items-center justify-between mb-4">
         <button
           id="back-to-home-btn"
@@ -109,83 +150,174 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
           <ArrowLeft className="w-4 h-4" />
           <span>Back to Search</span>
         </button>
-
-        <button
-          id="toggle-edit-search-btn"
-          onClick={() => setIsEditingSearch(!isEditingSearch)}
-          className="inline-flex items-center gap-1.5 text-xs font-bold text-teal-700 bg-teal-50 hover:bg-teal-100 border border-teal-200 px-3.5 py-1.5 rounded-lg transition-colors cursor-pointer"
-        >
-          <SlidersHorizontal className="w-3.5 h-3.5" />
-          <span>{isEditingSearch ? 'Hide Search Controls' : 'Edit Search Criteria'}</span>
-        </button>
       </div>
-
-      {/* Expandable Search Criteria Editor */}
-      {isEditingSearch && (
-        <div className="mb-6 animate-in fade-in duration-200">
-          <SearchForm
-            query={query}
-            onChangeQuery={onChangeQuery}
-            onSubmitSearch={() => {
-              setIsEditingSearch(false);
-              onSearch();
-            }}
-            compact={true}
-            isSearching={isSearching}
-          />
-        </div>
-      )}
 
       {/* Prominent Search Summary & Criteria Banner */}
       <div className="bg-white rounded-2xl border border-slate-200/90 p-5 sm:p-6 mb-6 shadow-xs">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
-          <div>
-            <div className="flex items-center gap-2 text-teal-700 text-xs font-bold uppercase tracking-wider mb-1">
-              <Compass className="w-3.5 h-3.5" />
-              <span>Realistic Trip Cost Estimates</span>
-            </div>
-            <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
-              Best Destinations for Your Budget
-            </h1>
-            <p className="text-xs sm:text-sm text-slate-600 mt-1">
-              Estimated realistic costs including transport, stay, food, local transit, and sights.
-            </p>
-          </div>
+        <div className="flex items-center gap-2 text-teal-700 text-xs font-bold uppercase tracking-wider mb-1">
+          <Compass className="w-3.5 h-3.5" />
+          <span>Realistic Trip Cost Estimates</span>
+        </div>
+        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+          Best Destinations for Your Budget
+        </h1>
+        <p className="text-xs sm:text-sm text-slate-600 mt-1">
+          Estimated realistic costs including transport, stay, food, local transit, and sights.
+        </p>
 
-          {/* Prominent Search Criteria Recap Tag */}
-          <div className="bg-slate-50 border border-slate-200 p-3 sm:p-3.5 rounded-xl self-start lg:self-auto">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-1.5">
-              Active Search Criteria
-            </div>
-            <div className="flex flex-wrap items-center gap-2 text-xs font-bold text-slate-800">
-              <span className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-md border border-slate-200">
+        {/* Editable Active Search Criteria */}
+        <div className="mt-5 bg-slate-50 border border-slate-200 p-3.5 sm:p-4 rounded-xl">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-2.5">
+            Active Search Criteria — edit and update anytime
+          </div>
+          <div className="flex flex-wrap items-end gap-3">
+            {/* Origin city */}
+            <div className="flex flex-col">
+              <label htmlFor="criteria-city" className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
                 <MapPin className="w-3 h-3 text-teal-600" />
-                {query.fromCity}
-              </span>
-              <span className="text-slate-400">→</span>
-              <span className="inline-flex items-center gap-1 bg-teal-50 px-2.5 py-1 rounded-md border border-teal-200 text-teal-800 font-extrabold">
-                {formatINR(query.budget)}
-              </span>
-              <span className="text-slate-400">→</span>
-              <span className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-md border border-slate-200">
-                <Users className="w-3 h-3 text-slate-500" />
-                {query.travelers} {query.travelers === 1 ? 'Traveler' : 'Travelers'}
-              </span>
-              <span className="text-slate-400">→</span>
-              <span className="inline-flex items-center gap-1 bg-white px-2.5 py-1 rounded-md border border-slate-200">
-                <Calendar className="w-3 h-3 text-slate-500" />
-                {query.durationDays} Days
-              </span>
-              <span className="text-slate-400">→</span>
-              <span className="inline-flex items-center gap-1 bg-slate-100 px-2.5 py-1 rounded-md border border-slate-300 text-slate-700 font-semibold">
-                {query.month}
-              </span>
+                From
+              </label>
+              <div className="relative">
+                <select
+                  id="criteria-city"
+                  value={draftQuery.fromCity}
+                  onChange={(e) => setDraftQuery({ ...draftQuery, fromCity: e.target.value as CityOrigin })}
+                  className="h-9 pl-2.5 pr-7 bg-white text-slate-900 font-bold text-xs rounded-lg border border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20 focus:outline-hidden appearance-none cursor-pointer"
+                >
+                  {POPULAR_CITIES.map((city) => (
+                    <option key={city} value={city}>{city}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
             </div>
+
+            <span className="text-slate-300 pb-2 hidden sm:inline">→</span>
+
+            {/* Budget */}
+            <div className="flex flex-col">
+              <label htmlFor="criteria-budget" className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
+                <IndianRupee className="w-3 h-3 text-teal-600" />
+                Budget
+              </label>
+              <div className="relative">
+                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 font-bold text-xs">₹</span>
+                <input
+                  id="criteria-budget"
+                  type="number"
+                  min={1000}
+                  step={500}
+                  value={draftQuery.budget || ''}
+                  onChange={(e) => setDraftQuery({ ...draftQuery, budget: e.target.value === '' ? 0 : Number(e.target.value) })}
+                  onBlur={() => setDraftQuery((prev) => ({ ...prev, budget: Math.max(1000, prev.budget || 0) }))}
+                  className="w-28 h-9 pl-6 pr-2 bg-teal-50 text-teal-900 font-extrabold text-xs rounded-lg border border-teal-200 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20 focus:outline-hidden"
+                />
+              </div>
+            </div>
+
+            <span className="text-slate-300 pb-2 hidden sm:inline">→</span>
+
+            {/* Travelers */}
+            <div className="flex flex-col">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
+                <Users className="w-3 h-3 text-slate-500" />
+                Travelers
+              </label>
+              <div className="flex items-center h-9 bg-white rounded-lg border border-slate-300 px-1">
+                <button
+                  type="button"
+                  onClick={() => setDraftQuery({ ...draftQuery, travelers: Math.max(1, draftQuery.travelers - 1) })}
+                  disabled={draftQuery.travelers <= 1}
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  aria-label="Decrease travelers"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <span className="w-7 text-center text-xs font-bold text-slate-800">{draftQuery.travelers}</span>
+                <button
+                  type="button"
+                  onClick={() => setDraftQuery({ ...draftQuery, travelers: Math.min(10, draftQuery.travelers + 1) })}
+                  disabled={draftQuery.travelers >= 10}
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  aria-label="Increase travelers"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            <span className="text-slate-300 pb-2 hidden sm:inline">→</span>
+
+            {/* Duration */}
+            <div className="flex flex-col">
+              <label className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1 flex items-center gap-1">
+                <Calendar className="w-3 h-3 text-slate-500" />
+                Days
+              </label>
+              <div className="flex items-center h-9 bg-white rounded-lg border border-slate-300 px-1">
+                <button
+                  type="button"
+                  onClick={() => setDraftQuery({ ...draftQuery, durationDays: Math.max(1, draftQuery.durationDays - 1) })}
+                  disabled={draftQuery.durationDays <= 1}
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  aria-label="Decrease days"
+                >
+                  <Minus className="w-3 h-3" />
+                </button>
+                <span className="w-7 text-center text-xs font-bold text-slate-800">{draftQuery.durationDays}</span>
+                <button
+                  type="button"
+                  onClick={() => setDraftQuery({ ...draftQuery, durationDays: Math.min(14, draftQuery.durationDays + 1) })}
+                  disabled={draftQuery.durationDays >= 14}
+                  className="w-6 h-6 flex items-center justify-center rounded-md text-slate-600 hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
+                  aria-label="Increase days"
+                >
+                  <Plus className="w-3 h-3" />
+                </button>
+              </div>
+            </div>
+
+            <span className="text-slate-300 pb-2 hidden sm:inline">→</span>
+
+            {/* Month */}
+            <div className="flex flex-col">
+              <label htmlFor="criteria-month" className="text-[10px] font-bold uppercase tracking-wider text-slate-500 mb-1">
+                Month
+              </label>
+              <div className="relative">
+                <select
+                  id="criteria-month"
+                  value={draftQuery.month}
+                  onChange={(e) => setDraftQuery({ ...draftQuery, month: e.target.value })}
+                  className="h-9 pl-2.5 pr-7 bg-white text-slate-900 font-bold text-xs rounded-lg border border-slate-300 focus:border-teal-600 focus:ring-2 focus:ring-teal-500/20 focus:outline-hidden appearance-none cursor-pointer"
+                >
+                  {MONTHS.map((m) => (
+                    <option key={m} value={m}>{m}</option>
+                  ))}
+                </select>
+                <ChevronDown className="w-3.5 h-3.5 text-slate-400 absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Update button */}
+            <button
+              id="update-search-criteria-btn"
+              onClick={handleUpdateResults}
+              disabled={isSearching || !isDirty}
+              className={`h-9 ml-auto px-4 rounded-lg text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer disabled:cursor-not-allowed ${
+                isDirty
+                  ? 'bg-teal-600 hover:bg-teal-700 text-white shadow-xs'
+                  : 'bg-slate-200 text-slate-500'
+              }`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSearching ? 'animate-spin' : ''}`} />
+              <span>{isSearching ? 'Updating...' : 'Update Results'}</span>
+            </button>
           </div>
         </div>
 
         {/* Budget Status Quick Filter Toolbar */}
-        <div className="mt-6 pt-5 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="mt-5 pt-5 border-t border-slate-100 flex flex-col md:flex-row md:items-center justify-between gap-4">
           {/* Status Breakdown Buttons */}
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-600 mr-1">Budget Status:</span>
@@ -279,7 +411,7 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
       {/* Results Header Notice */}
       <div className="flex items-center justify-between text-xs text-slate-500 mb-4 px-1">
         <span>
-          Showing <strong>{processedDestinations.length}</strong> matching destination{processedDestinations.length !== 1 ? 's' : ''} for {query.month}
+          Showing <strong>{paginatedDestinations.length}</strong> of <strong>{processedDestinations.length}</strong> matching destination{processedDestinations.length !== 1 ? 's' : ''} for {query.month}
         </span>
         <span className="hidden sm:inline italic text-slate-500">
           *Estimates are indicative; transport and hotel prices may vary by booking date and season
@@ -307,20 +439,77 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
           </button>
         </div>
       ) : (
-        <div className="space-y-4 sm:space-y-5">
-          {processedDestinations.map(({ dest, costInfo }) => (
-            <DestinationCard
-              key={dest.id}
-              destination={dest}
-              costInfo={costInfo}
-              query={query}
-              onSelect={onSelectDestination}
-              layout="row"
-              isSaved={savedTripIds.includes(dest.id)}
-              onToggleSave={onToggleSave}
-            />
-          ))}
-        </div>
+        <>
+          <div className="space-y-4 sm:space-y-5">
+            {paginatedDestinations.map(({ dest, costInfo }) => (
+              <DestinationCard
+                key={dest.id}
+                destination={dest}
+                costInfo={costInfo}
+                query={query}
+                onSelect={onSelectDestination}
+                layout="row"
+                isSaved={savedTripIds.includes(dest.id)}
+                onToggleSave={onToggleSave}
+              />
+            ))}
+          </div>
+
+          {/* Pagination Controls */}
+          {totalPages > 1 && (
+            <div className="mt-8 flex items-center justify-center gap-1.5">
+              <button
+                id="pagination-prev-btn"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage === 1}
+                className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                aria-label="Previous page"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </button>
+
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter((page) => {
+                  // Show first, last, current, and neighbors of current; collapse the rest
+                  return page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1;
+                })
+                .reduce<(number | 'ellipsis')[]>((acc, page, idx, arr) => {
+                  if (idx > 0 && page - arr[idx - 1] > 1) acc.push('ellipsis');
+                  acc.push(page);
+                  return acc;
+                }, [])
+                .map((item, idx) =>
+                  item === 'ellipsis' ? (
+                    <span key={`ellipsis-${idx}`} className="w-9 h-9 flex items-center justify-center text-slate-400 text-xs">
+                      …
+                    </span>
+                  ) : (
+                    <button
+                      key={item}
+                      onClick={() => goToPage(item)}
+                      className={`w-9 h-9 flex items-center justify-center rounded-lg text-xs font-bold transition-colors cursor-pointer ${
+                        item === currentPage
+                          ? 'bg-teal-600 text-white shadow-xs'
+                          : 'bg-white border border-slate-200 text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      {item}
+                    </button>
+                  )
+                )}
+
+              <button
+                id="pagination-next-btn"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage === totalPages}
+                className="w-9 h-9 flex items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 hover:bg-slate-50 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer transition-colors"
+                aria-label="Next page"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
