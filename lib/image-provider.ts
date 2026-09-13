@@ -1,9 +1,15 @@
 /**
- * Image Provider Abstraction
- * 
- * Provides destination-specific images. In the future, this can be expanded
- * to integrate with a real image API (like Unsplash API or Pexels) using
- * an API key.
+ * Image Provider — Unsplash API integration.
+ *
+ * Searches Unsplash for a photo matching the destination name/state, falling
+ * back to a small curated list (for well-known cities where a specific,
+ * hand-picked photo reads better than a search result) and finally to a
+ * generic placeholder if the API is unavailable.
+ *
+ * A rate-limit response (403/429, free tier: 50 requests/hour) is NOT treated
+ * as "no photo found" — it's thrown as UnsplashRateLimitError so callers (e.g.
+ * the batch backfill script) can distinguish "this place has no good photo"
+ * from "we've been cut off and every subsequent call will fail the same way."
  */
 
 const FALLBACK_DESTINATION_IMAGES: Record<string, string> = {
@@ -27,19 +33,78 @@ const FALLBACK_DESTINATION_IMAGES: Record<string, string> = {
   tokyo: 'https://images.unsplash.com/photo-1540959733332-eab4deabeeaf?auto=format&fit=crop&w=1600&q=80',
   london: 'https://images.unsplash.com/photo-1513635269975-59693e0cd8ce?auto=format&fit=crop&w=1600&q=80',
   'new york': 'https://images.unsplash.com/photo-1496442226666-8d4d0e62e6e9?auto=format&fit=crop&w=1600&q=80',
-  dubai: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1600&q=80'
+  dubai: 'https://images.unsplash.com/photo-1512453979798-5ea266f8880c?auto=format&fit=crop&w=1600&q=80',
 };
 
 const GENERIC_FALLBACK = 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1600&q=80';
 
-export async function getDestinationImage(destinationName: string): Promise<string> {
-  // TODO: Add dynamic API call here (e.g. Unsplash API) once an API key is provided
-  // For now, use the curated mapping
+export class UnsplashRateLimitError extends Error {
+  constructor(status: number) {
+    super(`Unsplash API rate limit hit (HTTP ${status})`);
+    this.name = 'UnsplashRateLimitError';
+  }
+}
+
+interface UnsplashSearchResult {
+  results: { urls: { regular: string } }[];
+}
+
+async function searchUnsplash(query: string): Promise<string | null> {
+  const accessKey = process.env.UNSPLASH_ACCESS_KEY;
+  if (!accessKey || accessKey.includes('YOUR_UNSPLASH_KEY_HERE')) {
+    return null;
+  }
+
+  const url = new URL('https://api.unsplash.com/search/photos');
+  url.searchParams.set('query', query);
+  url.searchParams.set('per_page', '1');
+  url.searchParams.set('orientation', 'landscape');
+
+  const response = await fetch(url.toString(), {
+    headers: { Authorization: `Client-ID ${accessKey}` },
+  });
+
+  if (response.status === 403 || response.status === 429) {
+    throw new UnsplashRateLimitError(response.status);
+  }
+
+  if (!response.ok) {
+    console.warn(`[image-provider] Unsplash API error: ${response.status} ${response.statusText}`);
+    return null;
+  }
+
+  const data = (await response.json()) as UnsplashSearchResult;
+  const photo = data.results?.[0];
+  if (!photo) return null;
+
+  return `${photo.urls.regular}&w=1600&q=80`;
+}
+
+/**
+ * Throws UnsplashRateLimitError if the API is rate-limited — callers doing
+ * bulk work should catch this specifically and stop, rather than treating
+ * it as "no photo exists for this place" (see backfill script usage).
+ */
+export async function getDestinationImage(destinationName: string, state?: string): Promise<string> {
   const normalizedName = destinationName.toLowerCase().trim();
-  
+
   if (FALLBACK_DESTINATION_IMAGES[normalizedName]) {
     return FALLBACK_DESTINATION_IMAGES[normalizedName];
   }
-  
+
+  // Unsplash search works best with short, simple queries — a long compound
+  // query (e.g. "X Y travel landscape") often returns zero results for
+  // lesser-known places. Try progressively broader queries until one hits.
+  const candidateQueries = [
+    state ? `${destinationName} ${state}` : null,
+    `${destinationName} India`,
+    destinationName,
+  ].filter((q): q is string => Boolean(q));
+
+  for (const query of candidateQueries) {
+    const result = await searchUnsplash(query);
+    if (result) return result;
+  }
+
   return GENERIC_FALLBACK;
 }
