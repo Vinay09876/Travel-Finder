@@ -53,7 +53,7 @@ export async function generateDestination(
     const pois = await fetchTopOsmPois(lat, lng);
     const contextRegion = state || country;
     const enriched = await enrichDestination(destinationName, contextRegion, pois);
-    const heroImgUrl = await getDestinationImage(destinationName);
+    const heroImgUrl = await getDestinationImage(destinationName, contextRegion);
 
     // Guard against a duplicate created by a concurrent request while this ran.
     const existingRace = await prisma.destination.findUnique({ where: { id: slug } });
