@@ -4,9 +4,10 @@ import { mapPrismaToDestination } from '@/lib/db-mapper';
 import { z } from 'zod';
 import { generateObject } from 'ai';
 import { withGeminiFallback } from '@/lib/gemini-client';
-import { AiItineraryRequestSchema, UuidSchema, checkPayloadSize } from '@/lib/validations';
+import { AiItineraryRequestSchema, checkPayloadSize } from '@/lib/validations';
 import { getClientIp } from '@/lib/client-ip';
 import { checkRateLimit } from '@/lib/rate-limit';
+import { getSessionUserId } from '@/lib/session-server';
 
 const itinerarySchema = z.array(z.object({
   dayNumber: z.number(),
@@ -41,17 +42,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
 
-    const rawUserId = request.headers.get('x-user-id');
-    if (!rawUserId) {
-      return NextResponse.json({ error: 'Missing X-User-Id' }, { status: 401 });
-    }
-
-    // 2. Strict UUID Validation
-    let userId: string;
-    try {
-      userId = UuidSchema.parse(rawUserId);
-    } catch (e) {
-      return NextResponse.json({ error: 'Invalid user identity format' }, { status: 400 });
+    const userId = await getSessionUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'No active session' }, { status: 401 });
     }
 
     const body = await request.json();
@@ -225,22 +218,11 @@ ${retryContext}
         }
     }
 
-    // 5. Ensure anonymous user exists
-    let user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) {
-      user = await prisma.user.create({
-        data: {
-          id: userId,
-          email: `${userId}@anonymous.local`,
-          name: 'Anonymous Traveler',
-        }
-      });
-    }
-
-    // 6. Save to Prisma ONLY after all validation succeeds
+    // 5. Save to Prisma ONLY after all validation succeeds
+    // (userId is already a verified, existing user — guaranteed by getSessionUserId)
     const savedItinerary = await prisma.aiItinerary.create({
       data: {
-        userId: user.id,
+        userId,
         destinationId: destination.id,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         preferences: preferences as any,
