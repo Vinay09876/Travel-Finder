@@ -4,7 +4,6 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Destination, SearchQuery, CityOrigin } from '@/types';
 import { DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
 import { findNearestOriginCity } from '@/lib/distance';
-import { getAnonymousUserId } from '@/lib/user-identity';
 
 interface TravelContextType {
   savedTripIds: string[];
@@ -52,14 +51,13 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
-    const anonId = getAnonymousUserId();
-    if (!anonId) return;
-
-    const fetchSavedTrips = async () => {
+    const initSessionAndFetchSavedTrips = async () => {
       try {
-        const res = await fetch('/api/saved-trips', {
-          headers: { 'x-user-id': anonId as string }
-        });
+        // Ensures a signed, HttpOnly session cookie exists before relying on
+        // it for saved-trip requests — no client-supplied id is sent.
+        await fetch('/api/session');
+
+        const res = await fetch('/api/saved-trips');
         if (res.ok) {
           const data = await res.json();
           const ids = data.savedTrips.map((st: { destinationId: string, destination: Destination }) => st.destinationId);
@@ -73,14 +71,11 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
         setIsLoadingSavedTrips(false);
       }
     };
-    
-    fetchSavedTrips();
+
+    initSessionAndFetchSavedTrips();
   }, []);
 
   const handleToggleSave = async (destId: string, destinationObj?: Destination, query?: SearchQuery) => {
-    const anonId = getAnonymousUserId();
-    if (!anonId) return;
-
     const isSaving = !savedTripIds.includes(destId);
 
     try {
@@ -88,8 +83,7 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
         const res = await fetch('/api/saved-trips', {
           method: 'POST',
           headers: {
-            'Content-Type': 'application/json',
-            'x-user-id': anonId
+            'Content-Type': 'application/json'
           },
           body: JSON.stringify({
             destinationId: destId,
@@ -102,7 +96,7 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
             setSavedDestinations((prev) => [...prev, destinationObj]);
           } else {
             // Refresh saved trips to fetch the newly saved destination object from db
-            const getRes = await fetch('/api/saved-trips', { headers: { 'x-user-id': anonId } });
+            const getRes = await fetch('/api/saved-trips');
             if (getRes.ok) {
                const data = await getRes.json();
                setSavedDestinations(data.savedTrips.map((st: { destinationId: string, destination: Destination }) => st.destination));
@@ -111,8 +105,7 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
         }
       } else {
         const res = await fetch(`/api/saved-trips/${destId}`, {
-          method: 'DELETE',
-          headers: { 'x-user-id': anonId }
+          method: 'DELETE'
         });
         if (res.ok) {
           setSavedTripIds((prev) => prev.filter((id) => id !== destId));

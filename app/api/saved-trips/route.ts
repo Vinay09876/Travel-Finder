@@ -1,39 +1,19 @@
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { mapPrismaToDestination } from '@/lib/db-mapper';
-import { UuidSchema, SearchQuerySchema, checkPayloadSize } from '@/lib/validations';
+import { SearchQuerySchema, checkPayloadSize } from '@/lib/validations';
+import { getSessionUserId } from '@/lib/session-server';
 import { z } from 'zod';
 
-// Helper to get or create anonymous user
-async function getOrCreateUser(anonId: string | null) {
-  if (!anonId) throw new Error('Missing X-User-Id header');
-  const validId = UuidSchema.parse(anonId);
-  const email = `anon-${validId}@travelfinder.local`;
-  
-  let user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    user = await prisma.user.create({
-      data: {
-        email,
-        name: 'Anonymous Traveler',
-      }
-    });
-  }
-  return user;
-}
-
 export async function GET(request: Request) {
-  const anonId = request.headers.get('x-user-id');
   try {
-    let user;
-    try {
-      user = await getOrCreateUser(anonId);
-    } catch (e) {
-      return NextResponse.json({ error: 'Invalid user identity' }, { status: 400 });
+    const userId = await getSessionUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'No active session' }, { status: 401 });
     }
-    
+
     const savedTrips = await prisma.savedTrip.findMany({
-      where: { userId: user.id },
+      where: { userId },
       include: {
         destination: {
           include: {
@@ -61,7 +41,6 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const anonId = request.headers.get('x-user-id');
   try {
     try {
       checkPayloadSize(request, 15000);
@@ -69,11 +48,9 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
 
-    let user;
-    try {
-      user = await getOrCreateUser(anonId);
-    } catch (e) {
-      return NextResponse.json({ error: 'Invalid user identity' }, { status: 400 });
+    const userId = await getSessionUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: 'No active session' }, { status: 401 });
     }
 
     const body = await request.json();
@@ -103,7 +80,7 @@ export async function POST(request: Request) {
     const existing = await prisma.savedTrip.findUnique({
       where: {
         userId_destinationId: {
-          userId: user.id,
+          userId,
           destinationId: destinationId
         }
       }
@@ -119,7 +96,7 @@ export async function POST(request: Request) {
 
     const savedTrip = await prisma.savedTrip.create({
       data: {
-        userId: user.id,
+        userId,
         destinationId: destinationId,
         searchParams: searchParams
       }
