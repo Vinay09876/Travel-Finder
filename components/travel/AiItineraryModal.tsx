@@ -10,7 +10,6 @@ import { Destination, SearchQuery, TripVibe, ItineraryDay } from '@/types';
 import { formatINR } from '@/lib/utils';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
-import { getAnonymousUserId } from '@/lib/user-identity';
 
 export interface AiItineraryModalProps {
   destination: Destination;
@@ -46,13 +45,10 @@ export const AiItineraryModal: React.FC<AiItineraryModalProps> = ({
     setIsGenerating(true);
     setErrorMsg(null);
     try {
-      const anonId = getAnonymousUserId();
-
       const res = await fetch('/api/ai-itinerary', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-user-id': anonId,
         },
         body: JSON.stringify({
           destinationId: destination.id,
