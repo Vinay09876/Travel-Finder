@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any */
 import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { mapPrismaToDestination } from '@/lib/db-mapper';
@@ -26,26 +25,38 @@ export async function GET(request: Request) {
       return NextResponse.json({ error: 'Invalid search parameters', details: e }, { status: 400 });
     }
 
-    // Fetch all destinations from DB (or filter by category directly in DB if we want to optimize)
+    // Filter by category at the DB level (indexed) instead of fetching
+    // everything and discarding non-matching rows in JS. Budget/cost-based
+    // filtering still happens below — it depends on calculateTripCost, which
+    // needs per-destination pricing data that can't be expressed as a SQL
+    // WHERE clause (curated transport routes, Haversine fallback, etc).
+    const categoryFilter =
+      query.category && query.category !== 'all' ? { category: query.category } : {};
+
+    // Safety cap: this endpoint is meant to return "all destinations matching
+    // the category filter" for the frontend's existing client-side budget
+    // sort/filter/pagination — but it must never be able to return the
+    // literal entire table unbounded as the destination count grows.
+    const MAX_RESULTS = 200;
+
     const dbDestinations = await prisma.destination.findMany({
+      where: categoryFilter,
+      take: MAX_RESULTS,
       include: {
         transportRoutes: true,
         accommodations: true,
         costMultiplier: true,
-        activities: true,
-        itineraryDays: true
+        activities: true
+        // itineraryDays intentionally omitted — calculateTripCost never reads
+        // sampleItinerary, so fetching it here is pure waste on this endpoint.
       }
     });
 
-    let results = dbDestinations.map(dbDest => {
+    const results = dbDestinations.map(dbDest => {
       const destination = mapPrismaToDestination(dbDest);
       const costInfo = calculateTripCost(destination, query);
       return { destination, costInfo };
     });
-
-    if (query.category && query.category !== 'all') {
-      results = results.filter(r => r.destination.category === query.category);
-    }
 
     // Sort: fits > near > over, then by cost
     results.sort((a, b) => {

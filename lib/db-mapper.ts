@@ -7,7 +7,10 @@ type FullPrismaDestination = PrismaDestination & {
   accommodations: Accommodation[];
   costMultiplier: CostMultiplier | null;
   activities: Activity[];
-  itineraryDays: CuratedItineraryDay[];
+  // Optional: callers that don't need the day-by-day itinerary (e.g. search
+  // listings, where calculateTripCost never reads it) can omit this relation
+  // from their Prisma query entirely instead of fetching and discarding it.
+  itineraryDays?: CuratedItineraryDay[];
 };
 
 export function mapPrismaToDestination(dbDest: FullPrismaDestination): Destination {
@@ -70,7 +73,7 @@ export function mapPrismaToDestination(dbDest: FullPrismaDestination): Destinati
       costPerPerson: act.costPerPerson,
       tag: act.tag
     })),
-    sampleItinerary: dbDest.itineraryDays.sort((a,b) => a.dayNumber - b.dayNumber).map(day => ({
+    sampleItinerary: (dbDest.itineraryDays ?? []).slice().sort((a,b) => a.dayNumber - b.dayNumber).map(day => ({
       dayNumber: day.dayNumber,
       title: day.title,
       theme: day.theme,
