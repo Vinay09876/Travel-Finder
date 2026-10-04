@@ -1,6 +1,6 @@
 'use client';
 
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
 import { Destination, SearchQuery, CityOrigin } from '@/types';
 import { DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
 import { findNearestOriginCity } from '@/lib/distance';
@@ -75,7 +75,7 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
     initSessionAndFetchSavedTrips();
   }, []);
 
-  const handleToggleSave = async (destId: string, destinationObj?: Destination, query?: SearchQuery) => {
+  const handleToggleSave = useCallback(async (destId: string, destinationObj?: Destination, query?: SearchQuery) => {
     const isSaving = !savedTripIds.includes(destId);
 
     try {
@@ -115,22 +115,33 @@ export function TravelProvider({ children }: { children: React.ReactNode }) {
     } catch (err) {
       console.error('Failed to toggle save:', err);
     }
-  };
+  }, [savedTripIds]);
+
+  const value = useMemo<TravelContextType>(() => ({
+    savedTripIds,
+    savedDestinations,
+    isLoadingSavedTrips,
+    handleToggleSave,
+    detectedOriginCity,
+    isHowItWorksOpen,
+    setIsHowItWorksOpen,
+    isSavedTripsOpen,
+    setIsSavedTripsOpen,
+    isDesignSystemOpen,
+    setIsDesignSystemOpen
+  }), [
+    savedTripIds,
+    savedDestinations,
+    isLoadingSavedTrips,
+    handleToggleSave,
+    detectedOriginCity,
+    isHowItWorksOpen,
+    isSavedTripsOpen,
+    isDesignSystemOpen
+  ]);
 
   return (
-    <TravelContext.Provider value={{
-      savedTripIds,
-      savedDestinations,
-      isLoadingSavedTrips,
-      handleToggleSave,
-      detectedOriginCity,
-      isHowItWorksOpen,
-      setIsHowItWorksOpen,
-      isSavedTripsOpen,
-      setIsSavedTripsOpen,
-      isDesignSystemOpen,
-      setIsDesignSystemOpen
-    }}>
+    <TravelContext.Provider value={value}>
       {children}
     </TravelContext.Provider>
   );
