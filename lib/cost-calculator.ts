@@ -23,10 +23,6 @@ export function calculateTripCost(
     transportPreference = 'all',
   } = query;
 
-  console.log('DESTINATION REGION:', destination.region);
-  console.log('DESTINATION STATE:', destination.state);
-  console.log('DESTINATION NAME:', destination.name);
-
   const isInternational = destination.region === 'International';
 
   // 1. Calculate Transport
