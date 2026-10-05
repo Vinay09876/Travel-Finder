@@ -4,6 +4,9 @@ import { Suspense } from "react";
 import "./globals.css";
 import { TravelProvider } from "@/components/travel/TravelContext";
 import { TravelShell } from "@/components/travel/TravelShell";
+import { validateProductionEnv } from "@/lib/env-validation";
+
+validateProductionEnv();
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

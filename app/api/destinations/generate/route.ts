@@ -63,6 +63,8 @@ export async function POST(request: Request) {
     if (error instanceof z.ZodError) {
       return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
     }
-    return NextResponse.json({ error: 'Failed to generate destination', details: err.message }, { status: 500 });
+    // The underlying error (which may include internal details like a raw DB
+    // connection error) is logged server-side above, not returned to the client.
+    return NextResponse.json({ error: 'Failed to generate destination' }, { status: 500 });
   }
 }
