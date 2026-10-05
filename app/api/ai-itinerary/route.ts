@@ -54,7 +54,8 @@ export async function POST(request: Request) {
     try {
       parsedBody = AiItineraryRequestSchema.parse(body);
     } catch (e) {
-      return NextResponse.json({ error: 'Invalid request payload', details: e }, { status: 400 });
+      console.error('Invalid ai-itinerary request payload:', e);
+      return NextResponse.json({ error: 'Invalid request payload' }, { status: 400 });
     }
 
     const { destinationId, query, preferences } = parsedBody;

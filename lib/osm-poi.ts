@@ -5,7 +5,30 @@ export interface OsmPoi {
   lon: number;
 }
 
+/**
+ * Valid latitude/longitude ranges. Rejecting out-of-range or non-finite
+ * values here (rather than only at the API schema layer) protects every
+ * caller uniformly — including scripts/batch-generate-destinations.ts,
+ * which calls generateDestination() directly and never passes through the
+ * API route's Zod validation at all.
+ */
+function isValidCoordinate(lat: number, lon: number): boolean {
+  return (
+    Number.isFinite(lat) &&
+    Number.isFinite(lon) &&
+    lat >= -90 &&
+    lat <= 90 &&
+    lon >= -180 &&
+    lon <= 180
+  );
+}
+
 export async function fetchTopOsmPois(lat: number, lon: number): Promise<OsmPoi[]> {
+  if (!isValidCoordinate(lat, lon)) {
+    console.error(`[fetchTopOsmPois] Rejected out-of-range coordinates: lat=${lat}, lon=${lon}`);
+    return [];
+  }
+
   console.log(`[fetchTopOsmPois] Requesting POIs for Lat: ${lat}, Lon: ${lon}`);
   // Query within 10km bounding box using around:10000
   const overpassQuery = `
