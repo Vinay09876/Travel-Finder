@@ -40,7 +40,8 @@ export async function GET(request: Request) {
         transportPreference: searchParams.get('transportPreference') || undefined,
       });
     } catch (e) {
-      return NextResponse.json({ error: 'Invalid search parameters', details: e }, { status: 400 });
+      console.error('Invalid search parameters:', e);
+      return NextResponse.json({ error: 'Invalid search parameters' }, { status: 400 });
     }
 
     // Filter by category at the DB level (indexed) instead of fetching

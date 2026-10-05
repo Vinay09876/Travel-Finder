@@ -62,7 +62,8 @@ export async function POST(request: Request) {
         searchParams: SearchQuerySchema
       }).parse(body);
     } catch (e) {
-      return NextResponse.json({ error: 'Invalid request payload', details: e }, { status: 400 });
+      console.error('Invalid saved-trips request payload:', e);
+      return NextResponse.json({ error: 'Invalid request payload' }, { status: 400 });
     }
 
     const { destinationId, searchParams } = parsedBody;

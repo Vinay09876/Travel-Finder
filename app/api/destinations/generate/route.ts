@@ -6,8 +6,8 @@ import { generateDestination } from '@/lib/generate-destination';
 
 const GenerateDestinationSchema = z.object({
   destinationName: z.string().min(2).max(100),
-  lat: z.number(),
-  lng: z.number(),
+  lat: z.number().finite().min(-90).max(90),
+  lng: z.number().finite().min(-180).max(180),
   country: z.string(),
   state: z.string().optional()
 });

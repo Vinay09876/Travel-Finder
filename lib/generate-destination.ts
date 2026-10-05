@@ -29,7 +29,22 @@ export async function generateDestination(
   input: GenerateDestinationInput
 ): Promise<GenerateDestinationResult> {
   const { destinationName, lat, lng, country, state } = input;
-  const slug = destinationName.toLowerCase().replace(/[^a-z0-9]+/g, '-');
+  const slug = destinationName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, ''); // trim leading/trailing hyphens left by stripped characters
+
+  // A name with no ASCII letters/digits (e.g. one written entirely in a
+  // non-Latin script) collapses to an empty string here, which would
+  // otherwise silently create a destination with a blank/invalid primary
+  // key. Reject it explicitly instead.
+  if (!slug) {
+    return {
+      status: 'error',
+      destinationName,
+      error: `Destination name "${destinationName}" does not normalize to a valid identifier (no ASCII letters or digits found).`,
+    };
+  }
 
   try {
     const existing = await prisma.destination.findUnique({ where: { id: slug } });
