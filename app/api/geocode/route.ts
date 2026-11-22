@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server';
+import crypto from 'crypto';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getClientIp } from '@/lib/client-ip';
 
@@ -16,11 +17,14 @@ export async function GET(request: Request) {
   }
 
   const ip = getClientIp(request);
-  const userId = request.headers.get('x-user-id') || 'anon';
-  
   try {
-    // 30 requests per IP, 15 per user, per 1 minute for geocoding autocomplete
-    await checkRateLimit(ip, userId, 'geocode', 30, 15, 60000);
+    // 30 requests per IP per minute for geocoding autocomplete. There is no
+    // trusted per-user identity here, so the user bucket gets a fresh id per
+    // request (as in destinations/search). Previously every caller shared a
+    // single 'anon' bucket capped at 15/min site-wide, which silently killed
+    // autocomplete for everyone — and with no suggestion selected, the
+    // "Generate Itinerary" button can never be used.
+    await checkRateLimit(ip, crypto.randomUUID(), 'geocode', 30, 1, 60000);
   } catch (error: unknown) {
     const err = error as Error;
     if (err.message === 'IP_RATE_LIMIT_EXCEEDED' || err.message === 'USER_RATE_LIMIT_EXCEEDED') {
@@ -39,7 +43,7 @@ export async function GET(request: Request) {
   const url = `https://api.maptiler.com/geocoding/${encodeURIComponent(q)}.json?key=${apiKey}&fuzzyMatch=true&limit=5`;
   
   try {
-    const res = await fetch(url);
+    const res = await fetch(url, { signal: AbortSignal.timeout(8_000) });
     if (!res.ok) {
       throw new Error(`MapTiler API failed with status ${res.status}`);
     }

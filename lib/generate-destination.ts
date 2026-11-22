@@ -4,6 +4,15 @@ import { enrichDestination } from './gemini-enricher';
 import { getDestinationImage } from './image-provider';
 import { allKeysExhausted } from './gemini-client';
 
+const GENERIC_HERO_IMAGE = 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1600&q=80';
+
+export function slugifyDestinationName(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, ''); // trim leading/trailing hyphens left by stripped characters
+}
+
 export interface GenerateDestinationInput {
   destinationName: string;
   lat: number;
@@ -29,10 +38,7 @@ export async function generateDestination(
   input: GenerateDestinationInput
 ): Promise<GenerateDestinationResult> {
   const { destinationName, lat, lng, country, state } = input;
-  const slug = destinationName
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, ''); // trim leading/trailing hyphens left by stripped characters
+  const slug = slugifyDestinationName(destinationName);
 
   // A name with no ASCII letters/digits (e.g. one written entirely in a
   // non-Latin script) collapses to an empty string here, which would
@@ -60,7 +66,7 @@ export async function generateDestination(
     return {
       status: 'error',
       destinationName,
-      error: 'QUOTA_EXCEEDED: All configured Gemini API keys have exhausted their daily quota.',
+      error: 'QUOTA_EXCEEDED: All configured Gemini API keys are currently rate-limited or out of quota.',
     };
   }
 
@@ -68,7 +74,14 @@ export async function generateDestination(
     const pois = await fetchTopOsmPois(lat, lng);
     const contextRegion = state || country;
     const enriched = await enrichDestination(destinationName, contextRegion, pois);
-    const heroImgUrl = await getDestinationImage(destinationName, contextRegion);
+    // A hero image is cosmetic — an Unsplash rate limit or timeout must not
+    // throw away the (slow, quota-consuming) Gemini enrichment above.
+    let heroImgUrl = GENERIC_HERO_IMAGE;
+    try {
+      heroImgUrl = await getDestinationImage(destinationName, contextRegion);
+    } catch (imgErr) {
+      console.warn(`[generateDestination] Image lookup failed for ${destinationName}:`, imgErr);
+    }
 
     // Guard against a duplicate created by a concurrent request while this ran.
     const existingRace = await prisma.destination.findUnique({ where: { id: slug } });

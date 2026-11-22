@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   ArrowLeft,
   Users,
@@ -59,9 +59,13 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   const [draftQuery, setDraftQuery] = useState<SearchQuery>(query);
   const isDirty = useMemo(() => JSON.stringify(draftQuery) !== JSON.stringify(query), [draftQuery, query]);
 
-  useEffect(() => {
+  // Reset the draft when the committed query changes (adjust state during
+  // render rather than in an effect, which caused a cascading re-render).
+  const [prevQuery, setPrevQuery] = useState<SearchQuery>(query);
+  if (prevQuery !== query) {
+    setPrevQuery(query);
     setDraftQuery(query);
-  }, [query]);
+  }
 
   const handleUpdateResults = () => {
     onChangeQuery(draftQuery);
@@ -111,9 +115,12 @@ export const SearchResultsView: React.FC<SearchResultsViewProps> = ({
   }, [apiResults, selectedCategory, statusFilter, sortBy]);
 
   // Reset to page 1 whenever the filtered/sorted list changes shape
-  useEffect(() => {
+  const pageResetKey = [selectedCategory, statusFilter, sortBy] as const;
+  const [prevResetKey, setPrevResetKey] = useState<{ key: readonly string[]; results: typeof apiResults }>({ key: pageResetKey, results: apiResults });
+  if (prevResetKey.results !== apiResults || prevResetKey.key.some((v, i) => v !== pageResetKey[i])) {
+    setPrevResetKey({ key: pageResetKey, results: apiResults });
     setCurrentPage(1);
-  }, [selectedCategory, statusFilter, sortBy, apiResults]);
+  }
 
   const totalPages = Math.max(1, Math.ceil(processedDestinations.length / RESULTS_PER_PAGE));
   const paginatedDestinations = useMemo(() => {

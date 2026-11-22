@@ -7,6 +7,7 @@ import { SearchQuery, Destination, CalculatedCost, CityOrigin, TravelCategory, S
 import { DEFAULT_SEARCH_QUERY } from '@/lib/destinations';
 import { useTravelContext } from '@/components/travel/TravelContext';
 import { AlertCircle } from 'lucide-react';
+import { fetchJson } from '@/lib/fetch-json';
 
 function SearchResultsContent() {
   const searchParams = useSearchParams();
@@ -31,34 +32,48 @@ function SearchResultsContent() {
     };
   }, [searchParams]);
 
+  // Local edits to the criteria; reset whenever the URL query changes
+  // (adjust-state-during-render pattern instead of a setState-in-effect).
   const [localQuery, setLocalQuery] = useState<SearchQuery>(query);
-
-  // Sync local query when URL changes
-  useEffect(() => {
-  // eslint-disable-next-line react-hooks/set-state-in-effect
+  const [prevQuery, setPrevQuery] = useState<SearchQuery>(query);
+  if (prevQuery !== query) {
+    setPrevQuery(query);
     setLocalQuery(query);
-  }, [query]);
+  }
+
+  const [retryToken, setRetryToken] = useState(0);
+  const paramsString = searchParams.toString();
 
   useEffect(() => {
+    // Abort superseded requests so an older, slower response can't replace
+    // newer results (or flip the spinner off early).
+    const controller = new AbortController();
+
     const fetchResults = async () => {
       setIsSearching(true);
       setSearchError(null);
       try {
-        const res = await fetch(`/api/destinations/search?${searchParams.toString()}`);
-        if (!res.ok) throw new Error('Failed to fetch destinations');
-        const data = await res.json();
-        if (!data.results) throw new Error('Invalid response from server');
-        setApiResults(data.results);
-      } catch (err) {
-        console.error(err);
-        setSearchError('An error occurred while searching for trips. Please try again.');
-      } finally {
-        setIsSearching(false);
+        const res = await fetchJson<{ results?: { destination: Destination; costInfo: CalculatedCost }[] }>(
+          `/api/destinations/search?${paramsString}`,
+          { signal: controller.signal, timeoutMs: 30_000 }
+        );
+        if (!res.ok || !res.data?.results) {
+          if (res.timedOut) setSearchError('The search is taking too long. Please try again.');
+          else if (res.status === 429) setSearchError('Too many searches in a short time. Please wait a moment and try again.');
+          else if (res.status === 400) setSearchError('Some search details look invalid. Please go back and adjust your search.');
+          else setSearchError('An error occurred while searching for trips. Please try again.');
+        } else {
+          setApiResults(res.data.results);
+        }
+      } catch {
+        return; // aborted by a newer search / unmount
       }
+      setIsSearching(false);
     };
 
     fetchResults();
-  }, [searchParams]);
+    return () => controller.abort();
+  }, [paramsString, retryToken]);
 
   const handleSearchSubmit = (queryToSubmit?: SearchQuery) => {
     const q = queryToSubmit || localQuery;
@@ -91,13 +106,21 @@ function SearchResultsContent() {
           <AlertCircle className="w-8 h-8" />
         </div>
         <h2 className="text-xl font-bold text-slate-900 mb-2">Oops, something went wrong</h2>
-        <p className="text-slate-600 mb-6">{searchError}</p>
-        <button 
-          onClick={handleBackToHome} 
-          className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium transition-colors cursor-pointer"
-        >
-          Go Back Home
-        </button>
+        <p className="text-slate-600 mb-6 text-center">{searchError}</p>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={() => setRetryToken((t) => t + 1)}
+            className="px-5 py-2.5 bg-teal-600 hover:bg-teal-700 text-white rounded-xl font-medium transition-colors cursor-pointer"
+          >
+            Try Again
+          </button>
+          <button
+            onClick={handleBackToHome}
+            className="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl font-medium transition-colors cursor-pointer"
+          >
+            Go Back Home
+          </button>
+        </div>
       </div>
     );
   }

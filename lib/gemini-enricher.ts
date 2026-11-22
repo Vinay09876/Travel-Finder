@@ -1,7 +1,6 @@
-import { generateObject } from 'ai';
 import { z } from 'zod';
 import { OsmPoi } from './osm-poi';
-import { withGeminiFallback } from './gemini-client';
+import { generateStructured } from './gemini-client';
 
 export const DestinationEnrichmentSchema = z.object({
   tagline: z.string().describe("A short, catchy tagline (max 60 chars)"),
@@ -64,42 +63,32 @@ CRITICAL RULES:
 6. STRICT HALLUCINATION CHECK: The POIs listed above are the ONLY real-world places you are allowed to mention anywhere in the response. Do not mention other specific monuments, parks, temples, or museums in descriptions, tips, or sunset spots.
 `;
 
-  console.log(`[enrichDestination] Starting enrichment for ${destinationName}`);
-  console.log(`[enrichDestination] Received ${pois.length} POIs`);
-  console.log(`[enrichDestination] All allowed activities: ${allAllowed.join(', ')}`);
+  const isAllowed = (act: string) => allAllowed.includes(act.toLowerCase().trim());
+  const retryPrompt = prompt + `
 
+RETRY INSTRUCTION: Your previous attempt was rejected because you either invented a place not in the factual POIs list, or used an invalid activity name. You MUST ONLY use the EXACT POI names provided, or the generic terms. Do NOT include unverified places in descriptions.`;
 
-  let lastError = null;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    const { object } = await withGeminiFallback((model) =>
-      generateObject({
-        model,
-        schema: DestinationEnrichmentSchema,
-        prompt: attempt === 1 ? prompt : prompt + `\n\nRETRY INSTRUCTION: Your previous attempt was rejected because you either invented a place not in the factual POIs list, or used an invalid activity name. You MUST ONLY use the EXACT POI names provided, or the generic terms. Do NOT include unverified places in descriptions.`,
-      })
+  // Two attempts max: each Gemini call can take tens of seconds, and the user
+  // is waiting on a spinner. If the model still strays after the retry, the
+  // offending activity names are replaced with a generic fallback instead of
+  // failing the whole generation.
+  const MAX_ATTEMPTS = 2;
+  let object: z.infer<typeof DestinationEnrichmentSchema> | null = null;
+
+  for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
+    object = await generateStructured(DestinationEnrichmentSchema, attempt === 1 ? prompt : retryPrompt);
+
+    const invalid = object.itineraryDays.some((day) =>
+      [day.morning.activity, day.afternoon.activity, day.evening.activity].some((act) => !isAllowed(act))
     );
-
-    // Validate the generated object
-    let isValid = true;
-    for (const day of object.itineraryDays) {
-      const activities = [day.morning.activity, day.afternoon.activity, day.evening.activity];
-      
-      for (const act of activities) {
-        if (!allAllowed.includes(act.toLowerCase().trim())) {
-          console.warn(`[Validation Failed] Hallucinated or invalid activity: ${act}`);
-          isValid = false;
-          break;
-        }
-      }
-      
-      if (!isValid) break;
-    }
-
-    if (isValid) {
-      return object;
-    }
-    lastError = new Error("Generated itinerary contained hallucinated places or invalid activities.");
+    if (!invalid) return object;
+    console.warn(`[enrichDestination] Attempt ${attempt} for ${destinationName} used activities outside the POI list.`);
   }
 
-  throw lastError;
+  for (const day of object!.itineraryDays) {
+    for (const block of ['morning', 'afternoon', 'evening'] as const) {
+      if (!isAllowed(day[block].activity)) day[block].activity = 'Local Exploration';
+    }
+  }
+  return object!;
 }

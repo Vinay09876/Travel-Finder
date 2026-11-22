@@ -37,7 +37,7 @@ export const AiPreferencesSchema = z.object({
 });
 
 export const AiItineraryRequestSchema = z.object({
-  destinationId: z.string().min(1).max(50),
+  destinationId: z.string().min(1).max(120), // dynamic slugs come from names up to 100 chars
   query: SearchQuerySchema,
   preferences: AiPreferencesSchema
 });

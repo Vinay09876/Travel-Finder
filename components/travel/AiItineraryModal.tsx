@@ -10,6 +10,7 @@ import { Destination, SearchQuery, TripVibe, ItineraryDay } from '@/types';
 import { formatINR } from '@/lib/utils';
 import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
+import { fetchJson } from '@/lib/fetch-json';
 
 export interface AiItineraryModalProps {
   destination: Destination;
@@ -44,36 +45,41 @@ export const AiItineraryModal: React.FC<AiItineraryModalProps> = ({
   const handleGenerate = async () => {
     setIsGenerating(true);
     setErrorMsg(null);
-    try {
-      const res = await fetch('/api/ai-itinerary', {
+    const request = () =>
+      fetchJson<{ generatedContent?: ItineraryDay[] }>('/api/ai-itinerary', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           destinationId: destination.id,
           query,
           preferences: { vibe: selectedVibe, startTime, dietary },
         }),
+        // Server allows up to two ~50s model calls; stop waiting a bit after that.
+        timeoutMs: 120_000,
       });
 
+    try {
+      let res = await request();
+
+      // Session cookie missing/expired (e.g. the initial /api/session call
+      // failed or hadn't finished yet) — re-establish it once and retry.
+      if (res.status === 401) {
+        await fetchJson('/api/session', { timeoutMs: 10_000 });
+        res = await request();
+      }
+
       if (!res.ok) {
-        let errMessage = 'AI generation failed.';
-        try {
-          const errData = await res.json();
-          if (errData.error) errMessage = errData.error;
-        } catch {
-          // ignore
-        }
-        throw new Error(errMessage);
+        if (res.timedOut) throw new Error('The AI is taking too long to respond. Please try again.');
+        if (res.status === 0) throw new Error('Network error. Please check your connection and try again.');
+        if (res.status === 401) throw new Error('Could not start your session. Please refresh the page and try again.');
+        throw new Error(res.error || 'AI generation failed. Please try again.');
       }
 
-      const data = await res.json();
-      if (!data.generatedContent) {
-        throw new Error('Invalid response from AI.');
+      if (!res.data?.generatedContent?.length) {
+        throw new Error('Invalid response from AI. Please try again.');
       }
 
-      setGeneratedItinerary(data.generatedContent);
+      setGeneratedItinerary(res.data.generatedContent);
       setHasGenerated(true);
     } catch (err: unknown) {
       console.error(err);

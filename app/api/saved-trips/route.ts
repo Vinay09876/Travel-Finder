@@ -44,7 +44,7 @@ export async function POST(request: Request) {
   try {
     try {
       checkPayloadSize(request, 15000);
-    } catch (e) {
+    } catch {
       return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
 

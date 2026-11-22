@@ -2,57 +2,57 @@ import { NextResponse } from 'next/server';
 import prisma from '@/lib/prisma';
 import { mapPrismaToDestination } from '@/lib/db-mapper';
 import { z } from 'zod';
-import { generateObject } from 'ai';
-import { withGeminiFallback } from '@/lib/gemini-client';
+import { generateStructured, GeminiQuotaError, isTimeoutError } from '@/lib/gemini-client';
 import { AiItineraryRequestSchema, checkPayloadSize } from '@/lib/validations';
 import { getClientIp } from '@/lib/client-ip';
 import { checkRateLimit } from '@/lib/rate-limit';
 import { getSessionUserId } from '@/lib/session-server';
 
-const itinerarySchema = z.array(z.object({
-  dayNumber: z.number(),
-  title: z.string(),
-  theme: z.string(),
-  morning: z.object({
-    activity: z.string(),
-    description: z.string(),
-    estimatedCost: z.number(),
-    tip: z.string().optional()
-  }),
-  afternoon: z.object({
-    activity: z.string(),
-    description: z.string(),
-    estimatedCost: z.number(),
-    foodRecommendation: z.string().optional()
-  }),
-  evening: z.object({
-    activity: z.string(),
-    description: z.string(),
-    estimatedCost: z.number(),
-    sunsetSpotOrVibe: z.string().optional()
-  })
-}));
+// Allow enough time for up to two Gemini calls on serverless hosts.
+export const maxDuration = 120;
+
+const blockSchema = z.object({
+  activity: z.string(),
+  description: z.string(),
+  estimatedCost: z.number(),
+});
+
+// Wrapped in an object: a top-level array is not reliably supported as a
+// structured-output root by every provider/model.
+const itinerarySchema = z.object({
+  days: z.array(z.object({
+    dayNumber: z.number(),
+    title: z.string(),
+    theme: z.string(),
+    morning: blockSchema.extend({ tip: z.string().optional() }),
+    afternoon: blockSchema.extend({ foodRecommendation: z.string().optional() }),
+    evening: blockSchema.extend({ sunsetSpotOrVibe: z.string().optional() }),
+  })),
+});
+
+type GeneratedDay = z.infer<typeof itinerarySchema>['days'][number];
+
+const FALLBACK_ACTIVITY = { cost: 0, originalName: 'Local Exploration' };
+const BLOCKS = ['morning', 'afternoon', 'evening'] as const;
 
 export async function POST(request: Request) {
   try {
     // 1. Payload Size Protection
     try {
       checkPayloadSize(request, 15000); // 15KB max for AI request
-    } catch (e) {
+    } catch {
       return NextResponse.json({ error: 'Payload too large' }, { status: 413 });
     }
 
     const userId = await getSessionUserId(request);
     if (!userId) {
-      return NextResponse.json({ error: 'No active session' }, { status: 401 });
+      return NextResponse.json({ error: 'No active session', code: 'NO_SESSION' }, { status: 401 });
     }
 
-    const body = await request.json();
-
-    // 3. Strict Zod Validation for Body
+    // 2. Strict Zod Validation for Body
     let parsedBody;
     try {
-      parsedBody = AiItineraryRequestSchema.parse(body);
+      parsedBody = AiItineraryRequestSchema.parse(await request.json());
     } catch (e) {
       console.error('Invalid ai-itinerary request payload:', e);
       return NextResponse.json({ error: 'Invalid request payload' }, { status: 400 });
@@ -61,18 +61,21 @@ export async function POST(request: Request) {
     const { destinationId, query, preferences } = parsedBody;
     const durationDays = query.durationDays;
 
-    // 4. Rate Limiting (Before any DB or AI calls)
+    // 3. Rate Limiting (Before any DB or AI calls)
     const ip = getClientIp(request);
     try {
       await checkRateLimit(ip, userId, '/api/ai-itinerary', 20, 5, 3600000); // 20 per IP, 5 per User, 1 Hour window
     } catch (e: unknown) {
       if (e instanceof Error && e.message.includes('RATE_LIMIT_EXCEEDED')) {
-        return NextResponse.json({ error: 'Too Many Requests' }, { status: 429 });
+        return NextResponse.json(
+          { error: 'You have reached the hourly limit of 5 AI itineraries. Please try again later.', code: 'RATE_LIMITED' },
+          { status: 429 }
+        );
       }
       throw e;
     }
 
-    // 1. Fetch DB Context
+    // 4. Fetch DB Context
     const dbDest = await prisma.destination.findUnique({
       where: { id: destinationId },
       include: {
@@ -89,17 +92,47 @@ export async function POST(request: Request) {
     }
 
     const destination = mapPrismaToDestination(dbDest);
-    
+
     // Map valid activities for validation
     const validActivitiesMap = new Map<string, { cost: number, originalName: string }>();
     validActivitiesMap.set('free time', { cost: 0, originalName: 'Free Time' });
     validActivitiesMap.set('relaxation', { cost: 0, originalName: 'Relaxation' });
-    validActivitiesMap.set('local exploration', { cost: 0, originalName: 'Local Exploration' });
+    validActivitiesMap.set('local exploration', FALLBACK_ACTIVITY);
     destination.keyActivities.forEach(a => validActivitiesMap.set(a.name.toLowerCase().trim(), { cost: a.costPerPerson, originalName: a.name }));
 
-    const generateItinerary = async (retryContext = '') => {
-      const contextPrompt = `
-You are an expert travel planner for India. Create a detailed ${durationDays}-day itinerary for ${destination.name}.
+    const matchActivity = (raw: string) => {
+      const name = raw.toLowerCase().trim();
+      if (!name) return FALLBACK_ACTIVITY;
+      const exact = validActivitiesMap.get(name);
+      if (exact) return exact;
+      // Forgiving partial match (e.g. "Visit Baga Beach" -> "Baga Beach").
+      for (const [key, value] of validActivitiesMap) {
+        if (key.includes(name) || name.includes(key)) return value;
+      }
+      // Model invented a place: replace it with a free generic activity rather
+      // than failing the whole request (which previously surfaced as a
+      // generic "Unable to generate" error to the user).
+      console.warn(`[ai-itinerary] Replacing unknown activity: ${raw}`);
+      return FALLBACK_ACTIVITY;
+    };
+
+    /** Normalizes activities/costs in place and returns total activity cost for the group. */
+    const normalize = (days: GeneratedDay[]) => {
+      let total = 0;
+      days.forEach((day, idx) => {
+        day.dayNumber = idx + 1;
+        for (const block of BLOCKS) {
+          const matched = matchActivity(day[block].activity);
+          day[block].activity = matched.originalName;
+          day[block].estimatedCost = matched.cost; // per-person cost
+          total += matched.cost * query.travelers;
+        }
+      });
+      return total;
+    };
+
+    const basePrompt = `
+You are an expert travel planner. Create a detailed ${durationDays}-day itinerary for ${destination.name}.
 Do NOT invent places, activities, or costs. Use strictly the provided data.
 
 Destination Context:
@@ -114,9 +147,6 @@ ${destination.keyActivities.map(a => `- "${a.name}" (Cost: ${a.costPerPerson} IN
 - "Relaxation" (Cost: 0 INR)
 - "Local Exploration" (Cost: 0 INR)
 
-Daily Food Cost (per person): Budget: ${destination.dailyFoodCostPerPerson.budget}, Standard: ${destination.dailyFoodCostPerPerson.standard}
-Daily Local Transport Cost (per group): ${destination.dailyLocalTransportCost.scooterOrAuto}
-
 User Constraints:
 - Duration: ${durationDays} days
 - Group Size: ${query.travelers} travelers
@@ -126,101 +156,37 @@ User Constraints:
 - Dietary Preference: ${preferences.dietary}
 
 Instructions:
-1. Generate EXACTLY ${durationDays} days.
+1. Return an object with a "days" array containing EXACTLY ${durationDays} entries.
 2. For the 'activity' field in morning/afternoon/evening, you MUST output the EXACT name of an activity from the list above. Do NOT invent activity names.
 3. For the 'estimatedCost', just use 0. The server will calculate the authoritative cost.
-${retryContext}
-      `;
+`;
 
-      const { object } = await withGeminiFallback((model) =>
-        generateObject({
-          model,
-          schema: itinerarySchema,
-          prompt: contextPrompt,
-        })
-      );
-      return object;
-    };
+    const generate = async (retryContext = '') =>
+      (await generateStructured(itinerarySchema, basePrompt + retryContext, { timeoutMs: 50_000 })).days;
 
-    let generatedItinerary = await generateItinerary();
+    // At most two model calls per request so the user isn't left waiting on
+    // a spinner for minutes.
+    let days = await generate();
+    let totalActivityCost = days.length === durationDays ? normalize(days) : Infinity;
 
-    // 2. Validate Duration (with 1 retry)
-    if (generatedItinerary.length !== durationDays) {
-      console.warn(`Duration mismatch. Expected ${durationDays}, got ${generatedItinerary.length}. Retrying...`);
-      generatedItinerary = await generateItinerary(`CRITICAL: You previously generated ${generatedItinerary.length} days. You MUST generate EXACTLY ${durationDays} days.`);
-      if (generatedItinerary.length !== durationDays) {
-        return NextResponse.json({ error: 'Unable to generate an itinerary with the exact requested duration.' }, { status: 400 });
+    if (days.length !== durationDays || totalActivityCost > query.budget) {
+      const reason = days.length !== durationDays
+        ? `You previously generated ${days.length} days. You MUST generate EXACTLY ${durationDays} days.`
+        : `Your previous itinerary cost ${totalActivityCost} INR for activities alone, exceeding the budget of ${query.budget}. Prefer cheaper or free activities ("Free Time").`;
+      console.warn(`[ai-itinerary] Retrying: ${reason}`);
+      days = await generate(`\nCRITICAL: ${reason}\n`);
+
+      if (days.length > durationDays) days = days.slice(0, durationDays);
+      if (days.length !== durationDays) {
+        return NextResponse.json({ error: 'Unable to generate an itinerary with the exact requested duration. Please try again.' }, { status: 502 });
       }
-    }
-
-    // 3. Validate Activities and Costs
-    let totalActivityCost = 0;
-    for (const day of generatedItinerary) {
-      day.dayNumber = generatedItinerary.indexOf(day) + 1;
-      const blocks = ['morning', 'afternoon', 'evening'] as const;
-      
-      for (const block of blocks) {
-        const activityName = day[block].activity.toLowerCase().trim();
-        
-        // Find matching activity or fallback
-        let matchedActivity = validActivitiesMap.get(activityName);
-        
-        if (matchedActivity === undefined) {
-          // Check for partial match to be forgiving but safe
-          const partialMatchKey = Array.from(validActivitiesMap.keys()).find(k => k.includes(activityName) || activityName.includes(k));
-          if (partialMatchKey !== undefined) {
-             matchedActivity = validActivitiesMap.get(partialMatchKey)!;
-          } else {
-             // Invalid activity hallucinated by Gemini
-             console.error(`Invalid activity generated: ${day[block].activity}`);
-             return NextResponse.json({ error: 'Unable to generate a valid itinerary' }, { status: 400 });
-          }
-        }
-        
-        // Normalize cost to DB value and restore original casing
-        day[block].activity = matchedActivity.originalName;
-        day[block].estimatedCost = matchedActivity.cost; // Output exactly the per-person cost
-        totalActivityCost += matchedActivity.cost * query.travelers; // Total cost must still factor in travelers
+      totalActivityCost = normalize(days);
+      if (totalActivityCost > query.budget) {
+        return NextResponse.json({ error: 'Could not fit the activities into your budget. Try increasing the budget or choosing "Maximum Budget Saver".' }, { status: 422 });
       }
-    }
-
-    // 4. Budget Validation (Approximate check)
-    // We only check if the activities alone blow past the total budget to avoid impossible itineraries
-    if (totalActivityCost > query.budget) {
-        console.warn(`Generated itinerary exceeds budget. Total Activity Cost: ${totalActivityCost}, Budget: ${query.budget}. Retrying...`);
-        generatedItinerary = await generateItinerary(`CRITICAL: Your previous itinerary cost ${totalActivityCost} for activities alone, which exceeds the budget of ${query.budget}. You MUST select cheaper or free activities ("Free Time").`);
-        
-        // Re-validate cost
-        totalActivityCost = 0;
-        for (const day of generatedItinerary) {
-          const blocks = ['morning', 'afternoon', 'evening'] as const;
-          for (const block of blocks) {
-            const activityName = day[block].activity.toLowerCase().trim();
-            let matchedActivity = validActivitiesMap.get(activityName);
-            
-            if (matchedActivity === undefined) {
-              const partialMatchKey = Array.from(validActivitiesMap.keys()).find(k => k.includes(activityName) || activityName.includes(k));
-              if (partialMatchKey !== undefined) {
-                 matchedActivity = validActivitiesMap.get(partialMatchKey)!;
-              } else {
-                 console.error(`Invalid activity generated on retry: ${day[block].activity}`);
-                 return NextResponse.json({ error: 'Unable to generate a valid itinerary within budget constraints (invalid activity).' }, { status: 400 });
-              }
-            }
-            
-            day[block].activity = matchedActivity.originalName;
-            day[block].estimatedCost = matchedActivity.cost; // Output exactly the per-person cost
-            totalActivityCost += matchedActivity.cost * query.travelers;
-          }
-        }
-        
-        if (totalActivityCost > query.budget) {
-           return NextResponse.json({ error: 'Unable to generate a valid itinerary within the requested budget.' }, { status: 400 });
-        }
     }
 
     // 5. Save to Prisma ONLY after all validation succeeds
-    // (userId is already a verified, existing user — guaranteed by getSessionUserId)
     const savedItinerary = await prisma.aiItinerary.create({
       data: {
         userId,
@@ -228,17 +194,29 @@ ${retryContext}
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         preferences: preferences as any,
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        generatedContent: generatedItinerary as any,
+        generatedContent: days as any,
       }
     });
 
     return NextResponse.json({
       itineraryId: savedItinerary.id,
-      generatedContent: generatedItinerary
+      generatedContent: days
     });
 
   } catch (error) {
     console.error('AI Itinerary Error:', error);
-    return NextResponse.json({ error: 'Unable to generate a valid itinerary' }, { status: 500 });
+    if (error instanceof GeminiQuotaError) {
+      return NextResponse.json(
+        { error: 'Our AI planner is busy right now. Please try again in a few minutes.', code: 'AI_BUSY' },
+        { status: 503 }
+      );
+    }
+    if (isTimeoutError(error)) {
+      return NextResponse.json(
+        { error: 'The AI took too long to respond. Please try again.', code: 'TIMEOUT' },
+        { status: 504 }
+      );
+    }
+    return NextResponse.json({ error: 'Unable to generate a valid itinerary. Please try again.' }, { status: 500 });
   }
 }

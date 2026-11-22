@@ -29,7 +29,6 @@ export async function fetchTopOsmPois(lat: number, lon: number): Promise<OsmPoi[
     return [];
   }
 
-  console.log(`[fetchTopOsmPois] Requesting POIs for Lat: ${lat}, Lon: ${lon}`);
   // Query within 10km bounding box using around:10000
   const overpassQuery = `
     [out:json][timeout:25];
@@ -50,10 +49,12 @@ export async function fetchTopOsmPois(lat: number, lon: number): Promise<OsmPoi[
       headers: {
         'Content-Type': 'application/x-www-form-urlencoded',
         'User-Agent': 'TravelFinderApp/1.0'
-      }
+      },
+      // Overpass can queue requests for a long time when busy; without a
+      // client-side timeout the user's "Generate Itinerary" spinner hangs.
+      signal: AbortSignal.timeout(20_000),
     });
 
-    console.log(`[fetchTopOsmPois] Response HTTP Status: ${response.status}`);
     if (!response.ok) {
       console.error(`[fetchTopOsmPois] Error response body: ${await response.text()}`);
       throw new Error(`Overpass API error: ${response.statusText}`);
@@ -93,11 +94,6 @@ export async function fetchTopOsmPois(lat: number, lon: number): Promise<OsmPoi[
     });
 
     const finalPois = pois.slice(0, 15);
-    console.log(`[fetchTopOsmPois] Returning ${finalPois.length} POIs`);
-    if (finalPois.length > 0) {
-        console.log(`[fetchTopOsmPois] First few POIs: ${finalPois.slice(0, 5).map(p => p.name).join(', ')}`);
-    }
-    
     // Return max 15 POIs to give Gemini a factual set
     return finalPois;
   } catch (error) {

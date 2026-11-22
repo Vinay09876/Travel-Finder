@@ -62,6 +62,7 @@ async function searchUnsplash(query: string): Promise<string | null> {
 
   const response = await fetch(url.toString(), {
     headers: { Authorization: `Client-ID ${accessKey}` },
+    signal: AbortSignal.timeout(8_000),
   });
 
   if (response.status === 403 || response.status === 429) {
@@ -102,8 +103,18 @@ export async function getDestinationImage(destinationName: string, state?: strin
   ].filter((q): q is string => Boolean(q));
 
   for (const query of candidateQueries) {
-    const result = await searchUnsplash(query);
-    if (result) return result;
+    try {
+      const result = await searchUnsplash(query);
+      if (result) return result;
+    } catch (err) {
+      // A timeout/network failure will almost certainly repeat for the next
+      // query too — don't stack several 8s waits; use the placeholder.
+      if (err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError' || err.name === 'TypeError')) {
+        console.warn(`[image-provider] Unsplash unreachable (${err.name}); using placeholder.`);
+        return GENERIC_FALLBACK;
+      }
+      throw err;
+    }
   }
 
   return GENERIC_FALLBACK;

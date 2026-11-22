@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { Search, Loader2, MapPin } from 'lucide-react';
 import dynamic from 'next/dynamic';
+import { fetchJson } from '@/lib/fetch-json';
 
 const MapPreview = dynamic(() => import('./MapPreview'), { 
   ssr: false, 
@@ -38,6 +39,9 @@ export function DirectDestinationSearch() {
   const [errorMsg, setErrorMsg] = useState('');
   
   const dropdownRef = useRef<HTMLDivElement>(null);
+  // Set when a suggestion is picked, so filling the input with its label
+  // doesn't trigger another (pointless) geocode lookup.
+  const skipNextLookup = useRef(false);
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -50,8 +54,16 @@ export function DirectDestinationSearch() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Debounced geocoding search
+  // Debounced geocoding search. Each run aborts the previous request so a
+  // slow, stale response can't overwrite suggestions for newer input.
   useEffect(() => {
+    const controller = new AbortController();
+
+    if (skipNextLookup.current) {
+      skipNextLookup.current = false;
+      return;
+    }
+
     const fetchSuggestions = async () => {
       if (query.trim().length < 3) {
         setSuggestions([]);
@@ -59,20 +71,29 @@ export function DirectDestinationSearch() {
       }
       setIsLoadingSuggestions(true);
       try {
-        const res = await fetch(`/api/geocode?q=${encodeURIComponent(query)}`);
-        const data = await res.json();
-        if (data.features) {
-          setSuggestions(data.features);
+        const res = await fetchJson<{ features?: MapTilerFeature[] }>(
+          `/api/geocode?q=${encodeURIComponent(query.trim().slice(0, 50))}`,
+          { signal: controller.signal, timeoutMs: 10_000 }
+        );
+        if (res.ok && res.data?.features) {
+          setSuggestions(res.data.features);
+        } else if (res.status === 429) {
+          setSuggestions([]);
+          setErrorMsg('Too many searches. Please wait a few seconds and try again.');
         }
-      } catch (err) {
-        console.error(err);
-      } finally {
-        setIsLoadingSuggestions(false);
+      } catch {
+        // Aborted because the user kept typing — ignore.
+        return;
       }
+      setIsLoadingSuggestions(false);
     };
 
     const debounceTimer = setTimeout(fetchSuggestions, 400);
-    return () => clearTimeout(debounceTimer);
+    return () => {
+      clearTimeout(debounceTimer);
+      controller.abort();
+      setIsLoadingSuggestions(false);
+    };
   }, [query]);
 
   const handleSelect = (feature: MapTilerFeature) => {
@@ -93,7 +114,10 @@ export function DirectDestinationSearch() {
     }
 
     setSelectedLocation({ name, lat, lng, country, state });
-    setQuery(feature.place_name || name);
+    const label = feature.place_name || name;
+    // Only skip if the value actually changes (otherwise the effect won't re-run to consume the flag).
+    if (label !== query) skipNextLookup.current = true;
+    setQuery(label);
     setShowDropdown(false);
     setErrorMsg('');
   };
@@ -109,7 +133,7 @@ export function DirectDestinationSearch() {
     setErrorMsg('');
 
     try {
-      const res = await fetch('/api/destinations/generate', {
+      const res = await fetchJson<{ destinationId?: string }>('/api/destinations/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -119,23 +143,31 @@ export function DirectDestinationSearch() {
           country: selectedLocation.country,
           state: selectedLocation.state
         }),
+        // Generation = OSM lookup + up to two Gemini calls; never spin forever.
+        timeoutMs: 150_000,
       });
 
-      const data = await res.json();
-
       if (!res.ok) {
-        if (res.status === 404) setErrorMsg("We couldn't find that destination. Please try another place.");
-        else if (res.status === 429) setErrorMsg("Too many searches. Please try again in a little while.");
-        else setErrorMsg("Something went wrong while discovering this destination. Please try again.");
+        if (res.timedOut) setErrorMsg('This is taking longer than expected. Please try again in a moment.');
+        else if (res.status === 0) setErrorMsg('Network error. Please check your connection.');
+        else if (res.status === 404) setErrorMsg("We couldn't find that destination. Please try another place.");
+        else if (res.status === 429 || res.status === 503 || res.status === 504 || res.status === 400) {
+          setErrorMsg(res.error || 'Please try again in a little while.');
+        } else setErrorMsg('Something went wrong while discovering this destination. Please try again.');
+        setIsGenerating(false);
         return;
       }
 
-      if (data.destinationId) {
-        router.push(`/destination/${data.destinationId}`);
+      if (!res.data?.destinationId) {
+        setErrorMsg('Something went wrong while discovering this destination. Please try again.');
+        setIsGenerating(false);
+        return;
       }
+
+      // Keep the button in its loading state while the destination page loads.
+      router.push(`/destination/${encodeURIComponent(res.data.destinationId)}`);
     } catch {
-      setErrorMsg("Network error. Please check your connection.");
-    } finally {
+      setErrorMsg('Something went wrong. Please try again.');
       setIsGenerating(false);
     }
   };

@@ -8,7 +8,20 @@ import prisma from '@/lib/prisma';
  * atomicity itself — no held transaction/connection, so this stays cheap
  * under concurrent bursts instead of risking connection-pool exhaustion.
  */
-export async function checkRateLimit(
+export async function checkRateLimit(...args: Parameters<typeof checkRateLimitStrict>) {
+  try {
+    await checkRateLimitStrict(...args);
+  } catch (err) {
+    if (err instanceof Error && err.message.endsWith('RATE_LIMIT_EXCEEDED')) throw err;
+    // Fail open on infrastructure errors (DB unreachable/slow): rate limiting
+    // is abuse protection, not a reason to take down endpoints like geocode
+    // that don't otherwise need the database. Endpoints that do need the DB
+    // will still fail on their own queries.
+    console.error(`[rate-limit] Check failed for ${args[2]}, allowing request:`, err instanceof Error ? err.message : err);
+  }
+}
+
+async function checkRateLimitStrict(
   ip: string,
   userId: string,
   endpoint: string,
@@ -19,8 +32,8 @@ export async function checkRateLimit(
   const windowStart = new Date(Date.now() - windowMs);
 
   // Cleanup of old records is not part of the correctness-critical path —
-  // safe to run as a separate, best-effort statement.
-  await prisma.rateLimit.deleteMany({
+  // run it in the background so it never adds latency to the request.
+  void prisma.rateLimit.deleteMany({
     where: {
       endpoint,
       createdAt: { lt: windowStart }
