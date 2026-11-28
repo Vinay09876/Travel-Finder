@@ -1,36 +1,55 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# TravelFinder
 
-## Getting Started
+**Budget-first travel discovery for Indian travelers.**
 
-First, run the development server:
+Find trips that fit your budget. Search for a destination to get an itinerary and a cost estimate, or use Budget Discovery to find places you can afford.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+🔗 **Live demo:** https://travel.vinaycode.com
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+> Status: Beta
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Features
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- **Destination search:** enter a place and generate an itinerary with a cost estimate.
+- **Budget Discovery:** explore destinations that fit your budget.
+- **Origin city:** estimates are shown from your starting city (for example, Mumbai).
+- **Saved:** keep destinations you want to revisit.
+- **How It Works:** a page explaining how the app finds and estimates trips.
 
-## Learn More
+## Tech stack
 
-To learn more about Next.js, take a look at the following resources:
+- [Next.js](https://nextjs.org/) with TypeScript
+- [Prisma](https://www.prisma.io/) ORM
+- [Supabase](https://supabase.com/) (PostgreSQL)
+- Deployed on [Vercel](https://vercel.com/)
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Run locally
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. Clone the repository and install dependencies:
 
-## Deploy on Vercel
+   ```bash
+   git clone https://github.com/Vinay09876/Travel-Finder.git
+   cd Travel-Finder
+   npm install
+   ```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+2. Create a `.env` file and set the required environment variables, including `DATABASE_URL` for your PostgreSQL database.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+3. Generate the Prisma client:
+
+   ```bash
+   npx prisma generate
+   ```
+
+4. Start the development server:
+
+   ```bash
+   npm run dev
+   ```
+
+5. Open http://localhost:3000 in your browser.
+
+## Author
+
+**Vinay Ippakayala**
+[Portfolio](https://ai-portfolio-psi-black.vercel.app) · [GitHub](https://github.com/Vinay09876) · [LinkedIn](https://www.linkedin.com/in/vinayippakayala)
